@@ -132,6 +132,7 @@ const ICON_DATA = {
     ["circle", { cx: "12", cy: "12", r: "3" }],
   ],
   Minus: [["path", { d: "M5 12h14" }]],
+  Flame: [["path", { d: "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" }]],
   Plug: [
     ["path", { d: "M12 22v-5" }],
     ["path", { d: "M9 8V2" }],
@@ -160,7 +161,7 @@ const {
   Plus, X, Clapperboard, Users, ChevronRight, MapPin, Calendar, User,
   Trash2, Loader2, LayoutGrid, Film, UserCircle2, Send, Circle,
   CheckCircle2, Repeat, ChevronLeft, CheckSquare, Lock, LogOut, ShieldCheck,
-  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug,
+  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame,
 } = Icons;
 
 // ---------------------------------------------------------------------------
@@ -245,6 +246,18 @@ const TABLES = {
     fromDb: (row) => ({
       id: row.id, model: row.model, weekOf: row.week_of || "", title: row.title || "", link: row.link || "",
       views: row.views || 0, likes: row.likes || 0, shares: row.shares || 0, comments: row.comments || 0,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:trends": {
+    table: "trends", mode: "list", idKey: "id",
+    toDb: (t) => ({
+      id: t.id, show_cz: t.showCZ !== false, show_us: t.showUS !== false, category: t.category || "General",
+      title: t.title || "", description: t.description || "", link: t.link || "", week_of: t.weekOf || null,
+    }),
+    fromDb: (row) => ({
+      id: row.id, showCZ: !!row.show_cz, showUS: !!row.show_us, category: row.category || "General",
+      title: row.title || "", description: row.description || "", link: row.link || "", weekOf: row.week_of || "",
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
     }),
   },
@@ -1536,6 +1549,203 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
 
 // ---------- stats (admin entry) ----------
 
+// ---------- trends ----------
+
+function TrendManager({ trends, persistTrends }) {
+  const [adding, setAdding] = useState(false);
+  const [category, setCategory] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [link, setLink] = useState("");
+  const [weekOf, setWeekOf] = useState(todayISO());
+  const [showCZ, setShowCZ] = useState(true);
+  const [showUS, setShowUS] = useState(true);
+  const [filter, setFilter] = useState("all");
+
+  const categories = Array.from(new Set(trends.map((t) => t.category).filter(Boolean)));
+
+  const addTrend = async () => {
+    if (!title.trim()) return;
+    const entry = {
+      id: uid(), showCZ, showUS, category: category.trim() || "General", title, description, link, weekOf,
+      createdAt: Date.now(),
+    };
+    await persistTrends([...trends, entry]);
+    setCategory(""); setTitle(""); setDescription(""); setLink(""); setShowCZ(true); setShowUS(true); setAdding(false);
+  };
+  const deleteTrend = async (id) => {
+    await persistTrends(trends.filter((t) => t.id !== id));
+  };
+
+  const visible = [...trends]
+    .filter((t) => filter === "all" || t.category === filter)
+    .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || "") || b.createdAt - a.createdAt);
+
+  return (
+    <div>
+      <p className="c-muted text-sm mb-4">
+        Weekly viral video report, usually sourced from the US market — pick which audience(s) each one goes to. Ask Claude to research current trends, then drop the highlights here.
+      </p>
+
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button onClick={() => setFilter("all")}
+            className={`fs-11 font-mono uppercase px-2.5 py-1 rounded-lg border ${filter === "all" ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+            All
+          </button>
+          {categories.map((c) => (
+            <button key={c} onClick={() => setFilter(c)}
+              className={`fs-11 font-mono uppercase px-2.5 py-1 rounded-lg border ${filter === c ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+              {c}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setAdding(true)}
+          className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-3 py-1.5 rounded-lg font-semibold hover-bg-accent2">
+          <Plus size={13} /> Add trend
+        </button>
+      </div>
+
+      {adding && (
+        <div className="mb-5 c-bg-surface border c-border rounded-xl p-4 grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Grocery store GRWM POV"
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Week of</label>
+            <input type="date" value={weekOf} onChange={(e) => setWeekOf(e.target.value)}
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Category</label>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="POV, GRWM, storytime..."
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div className="col-span-2">
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Example link</label>
+            <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..."
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div className="col-span-2">
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Why it's working</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent resize-none" />
+          </div>
+          <div className="col-span-2">
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-2">Send to</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 text-sm c-text cursor-pointer">
+                <input type="checkbox" checked={showCZ} onChange={(e) => setShowCZ(e.target.checked)} /> 🇨🇿 CZ models
+              </label>
+              <label className="flex items-center gap-1.5 text-sm c-text cursor-pointer">
+                <input type="checkbox" checked={showUS} onChange={(e) => setShowUS(e.target.checked)} /> 🇺🇸 US models
+              </label>
+            </div>
+          </div>
+          <div className="col-span-2 flex gap-2">
+            <button onClick={addTrend} className="px-3 py-2 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase font-semibold">Post trend</button>
+            <button onClick={() => setAdding(false)} className="px-3 py-2 rounded-lg border c-border c-muted text-xs font-mono uppercase">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {visible.length === 0 ? (
+        <div className="fs-12 c-faint font-mono italic py-10 text-center border border-dashed c-border rounded-xl">no trends posted yet</div>
+      ) : (
+        <div className="space-y-2.5">
+          {visible.map((t) => (
+            <div key={t.id} className="c-bg-surface border c-border rounded-xl p-4 group relative">
+              <button onClick={() => deleteTrend(t.id)}
+                className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 c-muted hover-warn">
+                <Trash2 size={13} />
+              </button>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="fs-10 font-mono c-accent uppercase">Week of {fmtDay(t.weekOf)}</span>
+                <Badge color="#E5335C">{t.category}</Badge>
+                {t.showCZ && <Badge color="#5B8FA8">🇨🇿 CZ</Badge>}
+                {t.showUS && <Badge color="#5B8FA8">🇺🇸 US</Badge>}
+              </div>
+              <div className="c-text text-sm font-medium mb-1">{t.title}</div>
+              {t.description && <div className="c-muted text-xs mb-2">{t.description}</div>}
+              {t.link && <a href={t.link} target="_blank" rel="noopener noreferrer" className="fs-11 font-mono c-accent hover-accent-text">Watch example →</a>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreatorTrending({ trends, agency }) {
+  const [filter, setFilter] = useState("all");
+  const mine = trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ))
+    .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || "") || b.createdAt - a.createdAt);
+  const categories = Array.from(new Set(mine.map((t) => t.category).filter(Boolean)));
+  const visible = mine.filter((t) => filter === "all" || t.category === filter);
+  const latestWeek = mine[0]?.weekOf;
+
+  const groups = [];
+  visible.forEach((t) => {
+    const w = t.weekOf || "Undated";
+    let g = groups.find((g) => g.weekOf === w);
+    if (!g) { g = { weekOf: w, items: [] }; groups.push(g); }
+    g.items.push(t);
+  });
+
+  return (
+    <div>
+      <p className="c-muted text-sm mb-4">Viral videos worth copying, curated for you each week.</p>
+
+      {categories.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
+          <button onClick={() => setFilter("all")}
+            className={`fs-11 font-mono uppercase px-2.5 py-1 rounded-lg border ${filter === "all" ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+            All
+          </button>
+          {categories.map((c) => (
+            <button key={c} onClick={() => setFilter(c)}
+              className={`fs-11 font-mono uppercase px-2.5 py-1 rounded-lg border ${filter === c ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
+          Nothing posted yet, check back soon.
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {groups.map((g) => (
+            <div key={g.weekOf}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="fs-11 uppercase tracking-widest font-mono c-accent">
+                  {g.weekOf === latestWeek ? "This week" : g.weekOf === "Undated" ? "Undated" : `Week of ${fmtDay(g.weekOf)}`}
+                </span>
+              </div>
+              <div className="space-y-2.5">
+                {g.items.map((t) => (
+                  <div key={t.id} className="c-bg-surface border c-border rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Badge color="#E5335C">{t.category}</Badge>
+                    </div>
+                    <div className="c-text text-sm font-medium mb-1">{t.title}</div>
+                    {t.description && <div className="c-muted text-xs mb-2">{t.description}</div>}
+                    {t.link && <a href={t.link} target="_blank" rel="noopener noreferrer" className="fs-11 font-mono c-accent hover-accent-text">Watch example →</a>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatsManager({ stats, persistStats, models, reels, persistReels }) {
   const [adding, setAdding] = useState(false);
   const [model, setModel] = useState("");
@@ -2009,6 +2219,7 @@ const NAV_ADMIN = [
   { id: "calendar", label: "Calendar", icon: Calendar },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "stats", label: "Stats", icon: TrendingUp },
+  { id: "trends", label: "Trends", icon: Flame },
   { id: "models", label: "Model Manager", icon: Users },
   { id: "submit", label: "Submit Idea", icon: Send },
   { id: "settings", label: "Settings", icon: Lock },
@@ -2019,6 +2230,7 @@ const NAV_CREATOR = [
   { id: "content", label: "My Scenes", icon: Film },
   { id: "calendar", label: "My Calendar", icon: Calendar },
   { id: "tasks", label: "My Tasks", icon: CheckSquare },
+  { id: "trending", label: "Trending", icon: Flame },
   { id: "submit", label: "Submit Idea", icon: Send },
 ];
 
@@ -2074,12 +2286,13 @@ function App() {
   const { value: tasks, loading: tasksLoading, persist: persistTasks } = usePersisted("pipeline:tasks", []);
   const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
   const { value: reels, loading: reelsLoading, persist: persistReels } = usePersisted("pipeline:reels", []);
+  const { value: trends, loading: trendsLoading, persist: persistTrends } = usePersisted("pipeline:trends", []);
   const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPinCZ: "2748", adminPinUS: "1234" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = usePersisted("pipeline:integrations", DEFAULT_INTEGRATIONS);
   const [session, setSession] = useState(() => loadSavedSession());
   const [view, setView] = useState(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
-  const loading = cardsLoading || modelsLoading || tasksLoading || settingsLoading || statsLoading || reelsLoading || integrationsLoading;
+  const loading = cardsLoading || modelsLoading || tasksLoading || settingsLoading || statsLoading || reelsLoading || trendsLoading || integrationsLoading;
 
   if (loading) {
     return (
@@ -2133,6 +2346,7 @@ function App() {
   const scopedTasks = isAdmin ? tasks.filter((t) => agencyModelNameSet.has(t.model)) : tasks;
   const scopedStats = isAdmin ? stats.filter((s) => agencyModelNameSet.has(s.model)) : stats;
   const scopedReels = isAdmin ? reels.filter((r) => agencyModelNameSet.has(r.model)) : reels;
+  // trends are shared/global — Team manages the same list from either login, choosing per-trend who sees it
 
   const scopedPersistCards = isAdmin
     ? async (next) => persistCards([...cards.filter((c) => !agencyModelNameSet.has(c.model)), ...next])
@@ -2223,6 +2437,8 @@ function App() {
             {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
+            {currentView === "trends" && <TrendManager trends={trends} persistTrends={persistTrends} />}
+            {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "submit" && <CreatorForm models={models} cards={cards} persistCards={persistCards} restrictModel={restrictModel} />}
             {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />}
