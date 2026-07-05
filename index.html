@@ -15,7 +15,7 @@
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
 "use strict";
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 // ---------------------------------------------------------------------------
 // Inline icon set — replaces lucide-react so this file needs no bundler.
@@ -133,6 +133,18 @@ const ICON_DATA = {
   ],
   Minus: [["path", { d: "M5 12h14" }]],
   Flame: [["path", { d: "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" }]],
+  Sparkles: [
+    ["path", { d: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" }],
+    ["path", { d: "M20 3v4" }],
+    ["path", { d: "M22 5h-4" }],
+    ["path", { d: "M4 17v2" }],
+    ["path", { d: "M5 18H3" }],
+  ],
+  Mic: [
+    ["path", { d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" }],
+    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
+    ["line", { x1: "12", x2: "12", y1: "19", y2: "22" }],
+  ],
   Plug: [
     ["path", { d: "M12 22v-5" }],
     ["path", { d: "M9 8V2" }],
@@ -161,7 +173,7 @@ const {
   Plus, X, Clapperboard, Users, ChevronRight, MapPin, Calendar, User,
   Trash2, Loader2, LayoutGrid, Film, UserCircle2, Send, Circle,
   CheckCircle2, Repeat, ChevronLeft, CheckSquare, Lock, LogOut, ShieldCheck,
-  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame,
+  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic,
 } = Icons;
 
 // ---------------------------------------------------------------------------
@@ -1770,6 +1782,233 @@ function CreatorTrending({ trends, agency }) {
   );
 }
 
+// ---------- Neo (AI assistant) ----------
+
+function NeoOrb({ thinking }) {
+  const canvasRef = useRef(null);
+  const rotRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const size = 320;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + "px";
+    canvas.style.height = size + "px";
+    ctx.scale(dpr, dpr);
+
+    const N = 140;
+    const points = [];
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < N; i++) {
+      const y = 1 - (i / (N - 1)) * 2;
+      const radius = Math.sqrt(1 - y * y);
+      const theta = golden * i;
+      points.push({ x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius });
+    }
+
+    let raf;
+    const render = () => {
+      const speed = thinking ? 0.014 : 0.004;
+      rotRef.current += speed;
+      const r = rotRef.current;
+      ctx.clearRect(0, 0, size, size);
+      const cx = size / 2, cy = size / 2, R = 118;
+
+      const projected = points.map((p) => {
+        const cosR = Math.cos(r), sinR = Math.sin(r);
+        const x1 = p.x * cosR - p.z * sinR;
+        const z1 = p.x * sinR + p.z * cosR;
+        const scale = 1 / (1.6 - z1 * 0.6);
+        return { x: cx + x1 * R * scale, y: cy + p.y * R * scale, z: z1, scale };
+      });
+
+      // connecting lines between near points
+      ctx.lineWidth = 0.6;
+      for (let i = 0; i < projected.length; i++) {
+        for (let j = i + 1; j < projected.length; j++) {
+          const a = points[i], b = points[j];
+          const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+          if (d < 0.42) {
+            const avgZ = (projected[i].z + projected[j].z) / 2;
+            const alpha = thinking ? 0.22 + avgZ * 0.18 : 0.10 + avgZ * 0.1;
+            ctx.strokeStyle = `rgba(0,255,120,${Math.max(0.05, alpha)})`;
+            ctx.beginPath();
+            ctx.moveTo(projected[i].x, projected[i].y);
+            ctx.lineTo(projected[j].x, projected[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+      // points
+      projected.forEach((p) => {
+        const alpha = 0.35 + p.z * 0.4;
+        ctx.fillStyle = `rgba(60,255,150,${Math.max(0.2, alpha)})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.4 * p.scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      raf = requestAnimationFrame(render);
+    };
+    render();
+    return () => cancelAnimationFrame(raf);
+  }, [thinking]);
+
+  return <canvas ref={canvasRef} className="block mx-auto" />;
+}
+
+function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
+  const [messages, setMessages] = useState([]);
+  const [thinking, setThinking] = useState(false);
+  const [queriesToday, setQueriesToday] = useState(0);
+  const [listening, setListening] = useState(false);
+  const scrollRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const thinkingRef = useRef(false);
+  const speechSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, thinking]);
+
+  const send = async (text) => {
+    if (!text || thinkingRef.current) return;
+    thinkingRef.current = true;
+    setThinking(true);
+    setMessages((m) => [...m, { role: "user", text }]);
+    try {
+      const { data, error } = await supabaseClient.functions.invoke("neo-assistant", {
+        body: {
+          message: text,
+          agency,
+          context: {
+            cardCount: cards.length,
+            openTasks: tasks.filter((t) => t.status !== "done").length,
+            overdueTasks: tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < todayISO()).length,
+            modelNames: models.map((m) => m.name),
+            // Per-model earnings/subs history, most recent week first, so Neo can
+            // answer "how much did X earn" or "who's growing fastest" directly.
+            earningsByModel: models.map((m) => ({
+              model: m.name,
+              weeks: stats.filter((s) => s.model === m.name)
+                .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""))
+                .slice(0, 6)
+                .map((s) => ({ weekOf: s.weekOf, ofEarnings: s.ofEarnings, ofSubs: s.ofSubs, igFollowers: s.igFollowers, igReach: s.igReach })),
+            })),
+            // Best/worst performing reels so Neo can say what's working.
+            topReels: [...(reels || [])].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 12)
+              .map((r) => ({ model: r.model, title: r.title, weekOf: r.weekOf, views: r.views, likes: r.likes, shares: r.shares, comments: r.comments })),
+            recentTrends: trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ)).slice(-6).map((t) => ({ title: t.title, category: t.category })),
+          },
+        },
+      });
+      if (error) throw error;
+      const reply = data?.reply || "...";
+      setMessages((m) => [...m, { role: "neo", text: reply }]);
+      setQueriesToday((n) => n + 1);
+      if (window.speechSynthesis) {
+        const utter = new window.SpeechSynthesisUtterance(reply);
+        utter.rate = 1.02;
+        window.speechSynthesis.speak(utter);
+      }
+    } catch (e) {
+      setMessages((m) => [...m, { role: "neo", text: "Couldn't reach Neo — check the neo-assistant function and ANTHROPIC_API_KEY secret in Supabase." }]);
+    } finally {
+      thinkingRef.current = false;
+      setThinking(false);
+    }
+  };
+
+  // Always-on listener: stays running in the background, only acts when it
+  // hears "hey neo" (or "hi neo") followed by a request.
+  useEffect(() => {
+    if (!speechSupported) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    let stoppedByUs = false;
+
+    rec.onstart = () => setListening(true);
+    rec.onend = () => {
+      setListening(false);
+      if (!stoppedByUs) { try { rec.start(); } catch {} } // keep it always-on
+    };
+    rec.onerror = () => { /* mic denied, or silence timeout — onend will retry */ };
+    rec.onresult = (e) => {
+      const last = e.results[e.results.length - 1][0].transcript.trim();
+      const match = last.match(/\b(hey|hi|ok)\s+neo\b[,:]?\s*(.*)/i);
+      if (match) {
+        const command = match[2].trim();
+        if (command) send(command);
+      }
+    };
+
+    recognitionRef.current = rec;
+    try { rec.start(); } catch {}
+    return () => { stoppedByUs = true; try { rec.stop(); } catch {} };
+  }, [speechSupported]);
+
+  const neoGreen = "#3CFF96";
+  const neoDim = "#0B1A10";
+
+  return (
+    <div className="flex flex-col items-center -m-6 p-6 rounded-2xl" style={{ background: "#050806", minHeight: "calc(100vh - 160px)" }}>
+      <div className="relative mb-2">
+        <NeoOrb thinking={thinking} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="fs-9 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.8 }}>
+            {thinking ? "thinking…" : "neo"}
+          </span>
+        </div>
+      </div>
+
+      <div className="fs-10 font-mono uppercase tracking-widest mb-4" style={{ color: neoGreen, opacity: listening ? 0.85 : 0.35 }}>
+        {!speechSupported ? "voice needs chrome" : listening ? "● listening for \u201chey neo\u201d" : "mic off — reload to retry"}
+      </div>
+
+      <div className="flex items-center gap-6 mb-6 fs-10 font-mono uppercase tracking-wide" style={{ color: neoGreen, opacity: 0.6 }}>
+        <span>{cards.length} cards</span>
+        <span>{tasks.filter((t) => t.status !== "done").length} open tasks</span>
+        <span>{queriesToday} asked today</span>
+      </div>
+
+      <div className="w-full max-w-xl rounded-2xl p-4" style={{ background: neoDim, border: `1px solid ${neoGreen}33` }}>
+        <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-3 pr-1">
+          {messages.length === 0 && (
+            <div className="fs-12 font-mono italic text-center py-6" style={{ color: neoGreen, opacity: 0.4 }}>
+              Say "Hey Neo, …" to ask about your {agency} pipeline, tasks, or stats.
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={`text-sm ${m.role === "user" ? "text-right" : ""}`}>
+              <div className="inline-block px-3 py-2 rounded-xl max-w-[85%] font-mono"
+                style={m.role === "user"
+                  ? { background: neoGreen, color: "#04120A" }
+                  : { background: "#0F2418", color: neoGreen, border: `1px solid ${neoGreen}33` }}>
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {thinking && (
+            <div className="text-sm">
+              <div className="inline-block px-3 py-2 rounded-xl fs-12 font-mono" style={{ background: "#0F2418", color: neoGreen, opacity: 0.7, border: `1px solid ${neoGreen}33` }}>
+                thinking…
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatsManager({ stats, persistStats, models, reels, persistReels }) {
   const [adding, setAdding] = useState(false);
   const [model, setModel] = useState("");
@@ -2244,6 +2483,7 @@ const NAV_ADMIN = [
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "stats", label: "Stats", icon: TrendingUp },
   { id: "trends", label: "Trends", icon: Flame },
+  { id: "neo", label: "Neo", icon: Sparkles },
   { id: "models", label: "Model Manager", icon: Users },
   { id: "settings", label: "Settings", icon: Lock },
 ];
@@ -2273,7 +2513,7 @@ function loadSavedSession() {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
-    return { role: parsed.role, name: parsed.name };
+    return { role: parsed.role, name: parsed.name, agency: parsed.agency };
   } catch {
     return null;
   }
@@ -2460,6 +2700,7 @@ function App() {
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
             {currentView === "trends" && <TrendManager trends={trends} persistTrends={persistTrends} />}
+            {currentView === "neo" && <NeoPage agency={session.agency} cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} />}
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />}
