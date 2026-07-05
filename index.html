@@ -145,6 +145,10 @@ const ICON_DATA = {
     ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
     ["line", { x1: "12", x2: "12", y1: "19", y2: "22" }],
   ],
+  Bell: [
+    ["path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" }],
+    ["path", { d: "M10.3 21a1.94 1.94 0 0 0 3.4 0" }],
+  ],
   Plug: [
     ["path", { d: "M12 22v-5" }],
     ["path", { d: "M9 8V2" }],
@@ -173,7 +177,7 @@ const {
   Plus, X, Clapperboard, Users, ChevronRight, MapPin, Calendar, User,
   Trash2, Loader2, LayoutGrid, Film, UserCircle2, Send, Circle,
   CheckCircle2, Repeat, ChevronLeft, CheckSquare, Lock, LogOut, ShieldCheck,
-  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic,
+  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic, Bell,
 } = Icons;
 
 // ---------------------------------------------------------------------------
@@ -198,6 +202,7 @@ const TABLES = {
       always_onboard: !!m.alwaysOnboard, agency: m.agency || "CZ",
       buffer_channel_id_ig: m.bufferChannelIdIg || "", buffer_channel_id_x: m.bufferChannelIdX || "",
       buffer_channel_id_tiktok: m.bufferChannelIdTiktok || "", buffer_channel_id_fb: m.bufferChannelIdFb || "",
+      notif_last_seen: m.notifLastSeen ? new Date(m.notifLastSeen).toISOString() : new Date().toISOString(),
     }),
     fromDb: (r) => ({
       name: r.name, note: r.note || "", pin: r.pin || "", onboarded: !!r.onboarded,
@@ -207,6 +212,7 @@ const TABLES = {
       alwaysOnboard: !!r.always_onboard, agency: r.agency || "CZ",
       bufferChannelIdIg: r.buffer_channel_id_ig || "", bufferChannelIdX: r.buffer_channel_id_x || "",
       bufferChannelIdTiktok: r.buffer_channel_id_tiktok || "", bufferChannelIdFb: r.buffer_channel_id_fb || "",
+      notifLastSeen: r.notif_last_seen ? new Date(r.notif_last_seen).getTime() : Date.now(),
       addedAt: r.added_at ? new Date(r.added_at).getTime() : Date.now(),
     }),
   },
@@ -216,13 +222,13 @@ const TABLES = {
       id: c.id, seq: c.seq, title: c.title || "", model: c.model || null,
       scene_type: c.sceneType || "", location: c.location || "", deadline: c.deadline || null,
       assignee: c.assignee || "", script_link: c.scriptLink || "", notes: c.notes || "",
-      stage: c.stage || "idea", source: c.source || "team",
+      stage: c.stage || "idea", source: c.source || "team", platform: c.platform || "ig",
     }),
     fromDb: (r) => ({
       id: r.id, seq: r.seq, title: r.title || "", model: r.model,
       sceneType: r.scene_type || "", location: r.location || "", deadline: r.deadline || "",
       assignee: r.assignee || "", scriptLink: r.script_link || "", notes: r.notes || "",
-      stage: r.stage || "idea", source: r.source || "team",
+      stage: r.stage || "idea", source: r.source || "team", platform: r.platform || "ig",
       createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
     }),
   },
@@ -275,6 +281,19 @@ const TABLES = {
       id: row.id, showCZ: !!row.show_cz, showUS: !!row.show_us, category: row.category || "General",
       title: row.title || "", description: row.description || "", link: row.link || "", weekOf: row.week_of || "",
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:bufferDailyStats": {
+    // Written server-side once a day by the sync-buffer-stats Edge Function.
+    // The app only ever reads this — never persists to it directly.
+    table: "buffer_daily_stats", mode: "list", idKey: "id",
+    toDb: (r) => r, // not used in practice, but kept for shape consistency
+    fromDb: (row) => ({
+      id: row.id, model: row.model, platform: row.platform, statDate: row.stat_date,
+      postCount: row.post_count || 0, reactions: row.reactions || 0, comments: row.comments || 0,
+      reposts: row.reposts || 0, impressions: row.impressions || 0, clicks: row.clicks || 0,
+      engagementRate: Number(row.engagement_rate) || 0,
+      syncedAt: row.synced_at ? new Date(row.synced_at).getTime() : Date.now(),
     }),
   },
   "pipeline:integrations": {
@@ -358,6 +377,12 @@ const STAGES = [
   { id: "posted", label: "Posted", code: "05", color: "#6FB07F" },
 ];
 
+const PLATFORMS = [
+  { id: "ig", label: "Instagram", icon: "Instagram", color: "#E1306C" },
+  { id: "x", label: "X", icon: "X", color: "#8B93A1" },
+  { id: "tiktok", label: "TikTok", icon: "Flame", color: "#5B8FA8" },
+];
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const fontImport = `
@@ -428,6 +453,17 @@ const fontImport = `
 .minw-240 { min-width: 240px; }
 .w-240 { width: 240px; }
 .maxh-85vh { max-height: 85vh; }
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes softPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes cardIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+.anim-view { animation: fadeInUp 0.28s ease-out; }
+.anim-pulse-dot { animation: softPulse 2s ease-in-out infinite; }
+.anim-card-in { animation: cardIn 0.22s ease-out; }
+.hover-lift { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+.hover-lift:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+.transition-smooth { transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease; }
 `;
 
 // ---------- storage hooks ----------
@@ -463,6 +499,24 @@ function usePersisted(key, fallback, shared = true) {
 
 // ---------- shared bits ----------
 
+function CountUp({ value, prefix = "", duration = 600 }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    let raf;
+    const start = performance.now();
+    const from = 0;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(from + (value - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{prefix}{display.toLocaleString()}</>;
+}
+
 function Badge({ children, color }) {
   return (
     <span
@@ -476,9 +530,11 @@ function Badge({ children, color }) {
 
 function StatCard({ label, value, color }) {
   return (
-    <div className="c-bg-surface border c-border rounded-xl px-4 py-3.5 flex-1 minw-140">
+    <div className="c-bg-surface border c-border rounded-xl px-4 py-3.5 flex-1 minw-140 hover-lift">
       <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-1.5">{label}</div>
-      <div style={{ color: color || "#F2F2F4" }} className="text-2xl font-semibold" >{value}</div>
+      <div style={{ color: color || "#F2F2F4" }} className="text-2xl font-semibold">
+        {typeof value === "number" ? <CountUp value={value} /> : value}
+      </div>
     </div>
   );
 }
@@ -489,7 +545,7 @@ function CardTile({ card, onAdvance, onDelete, onOpen }) {
   const nextStage = STAGES[STAGES.findIndex((s) => s.id === card.stage) + 1];
   return (
     <div
-      className="relative c-bg-surface border c-border rounded-xl p-3 mb-3 group hover-border-2 transition-colors cursor-pointer"
+      className="relative c-bg-surface border c-border rounded-xl p-3 mb-3 group hover-border-2 transition-colors cursor-pointer hover-lift"
       onClick={() => onOpen(card)}
     >
       <div className="flex items-start justify-between mb-2">
@@ -513,6 +569,7 @@ function CardTile({ card, onAdvance, onDelete, onOpen }) {
       </div>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {card.model && <Badge color="#E5335C">{card.model}</Badge>}
+        {card.platform && <Badge color={PLATFORMS.find((p) => p.id === card.platform)?.color || "#8B93A1"}>{PLATFORMS.find((p) => p.id === card.platform)?.label || card.platform}</Badge>}
         {card.sceneType && <Badge color="#5B8FA8">{card.sceneType}</Badge>}
       </div>
       <div className="flex items-center justify-between fs-11 c-muted font-mono">
@@ -576,6 +633,14 @@ function CardDetail({ card, models, restrictModel, onClose, onSave, onDelete }) 
           </div>
         </div>
 
+        <div className="mb-3">
+          <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Network</label>
+          <select value={form.platform || "ig"} onChange={(e) => set("platform", e.target.value)}
+            className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent">
+            {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Location</label>
@@ -632,7 +697,9 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newModel, setNewModel] = useState(restrictModel || "");
+  const [newPlatform, setNewPlatform] = useState("ig");
   const [filter, setFilter] = useState(restrictModel || "all");
+  const [network, setNetwork] = useState("all");
 
   const nextSeq = () => (cards.reduce((m, c) => Math.max(m, c.seq || 0), 0) + 1);
 
@@ -640,11 +707,11 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
     if (!newTitle.trim()) return;
     const card = {
       id: uid(), seq: nextSeq(), title: newTitle, model: restrictModel || newModel, sceneType: "",
-      location: "", deadline: "", assignee: "", scriptLink: "", notes: "",
+      platform: newPlatform, location: "", deadline: "", assignee: "", scriptLink: "", notes: "",
       stage: "idea", source: restrictModel ? "creator" : "team", createdAt: Date.now(),
     };
     await persistCards([...cards, card]);
-    setNewTitle(""); setNewModel(restrictModel || ""); setAdding(false);
+    setNewTitle(""); setNewModel(restrictModel || ""); setNewPlatform("ig"); setAdding(false);
   };
 
   const advance = async (id, stageId) => {
@@ -659,10 +726,47 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
     setDetail(null);
   };
 
-  const visible = filter === "all" ? cards : cards.filter((c) => c.model === filter);
+  const byModel = filter === "all" ? cards : cards.filter((c) => c.model === filter);
+  const visible = network === "all" ? byModel : byModel.filter((c) => (c.platform || "ig") === network);
+  const countFor = (netId) => (netId === "all" ? byModel.length : byModel.filter((c) => (c.platform || "ig") === netId).length);
 
   return (
-    <div>
+    <div className="flex gap-5">
+      <div className="minw-140 w-140 flex-shrink-0 hidden md:block">
+        <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2 px-1">Network</div>
+        <div className="space-y-1">
+          <button onClick={() => setNetwork("all")}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg fs-12 font-mono transition-colors ${network === "all" ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
+            <span>All</span><span className="fs-10 c-faint">{countFor("all")}</span>
+          </button>
+          {PLATFORMS.map((p) => {
+            const Icon = p.icon === "Instagram" ? Instagram : p.icon === "Flame" ? Flame : X;
+            return (
+              <button key={p.id} onClick={() => setNetwork(p.id)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg fs-12 font-mono transition-colors ${network === p.id ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
+                <span className="flex items-center gap-1.5"><Icon size={12} />{p.label}</span>
+                <span className="fs-10 c-faint">{countFor(p.id)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0">
+      {/* Mobile network selector (no left column on small screens) */}
+      <div className="flex items-center gap-1.5 mb-3 md:hidden overflow-x-auto">
+        <button onClick={() => setNetwork("all")}
+          className={`fs-10 font-mono uppercase px-2.5 py-1 rounded-lg border flex-shrink-0 ${network === "all" ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+          All
+        </button>
+        {PLATFORMS.map((p) => (
+          <button key={p.id} onClick={() => setNetwork(p.id)}
+            className={`fs-10 font-mono uppercase px-2.5 py-1 rounded-lg border flex-shrink-0 ${network === p.id ? "c-border-accent c-accent" : "c-border c-muted"}`}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         {!restrictModel && (
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -690,6 +794,10 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
           <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addCard()} placeholder="Scene title / hook..."
             className="flex-1 minw-160 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          <select value={newPlatform} onChange={(e) => setNewPlatform(e.target.value)}
+            className="c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none">
+            {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
           {!restrictModel && (
             <select value={newModel} onChange={(e) => setNewModel(e.target.value)}
               className="c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none">
@@ -724,6 +832,7 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
       </div>
 
       {detail && <CardDetail card={detail} models={models} restrictModel={restrictModel} onClose={() => setDetail(null)} onSave={saveCard} onDelete={deleteCard} />}
+      </div>
     </div>
   );
 }
@@ -796,7 +905,7 @@ function ModelManager({ models, persistModels, cards, agency }) {
           const active = own.filter((c) => c.stage !== "posted").length;
           const posted = own.filter((c) => c.stage === "posted").length;
           return (
-            <div key={m.name} className="c-bg-surface border c-border rounded-xl p-4 group relative cursor-pointer hover-border-accent"
+            <div key={m.name} className="c-bg-surface border c-border rounded-xl p-4 group relative cursor-pointer hover-border-accent hover-lift"
               onClick={() => setDetailName(m.name)}>
               <button onClick={(e) => { e.stopPropagation(); removeModel(m.name); }}
                 className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 c-muted hover-warn transition-opacity">
@@ -1034,7 +1143,7 @@ function Dashboard({ cards, models, stats, reels, onNavigate }) {
           <div className="fs-12 c-faint font-mono italic py-4">No stats logged yet, add weekly entries in Stats.</div>
         ) : (
           <>
-            <div className="text-4xl md:text-5xl font-extrabold c-accent mb-1">${totalRevenue.toLocaleString()}</div>
+            <div className="text-4xl md:text-5xl font-extrabold c-accent mb-1">$<CountUp value={totalRevenue} /></div>
             <div className="fs-11 c-faint font-mono">across {latestPerModel.length} model{latestPerModel.length === 1 ? "" : "s"}, week of {fmtDay(mostRecentWeek)}</div>
           </>
         )}
@@ -1784,7 +1893,7 @@ function CreatorTrending({ trends, agency }) {
 
 // ---------- Neo (AI assistant) ----------
 
-function NeoOrb({ thinking }) {
+function NeoOrb({ thinking, speaking, onClick }) {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
 
@@ -1793,14 +1902,14 @@ function NeoOrb({ thinking }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const size = 320;
+    const size = 480;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.width = size + "px";
     canvas.style.height = size + "px";
     ctx.scale(dpr, dpr);
 
-    const N = 140;
+    const N = 420;
     const points = [];
     const golden = Math.PI * (3 - Math.sqrt(5));
     for (let i = 0; i < N; i++) {
@@ -1810,13 +1919,30 @@ function NeoOrb({ thinking }) {
       points.push({ x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius });
     }
 
+    // Precompute edges once — local point distances never change (only the
+    // rotation does), so this avoids an O(N^2) scan every animation frame.
+    const nearEdges = [];
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const a = points[i], b = points[j];
+        const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+        if (d < 0.22) nearEdges.push([i, j]);
+      }
+    }
+    // A fixed set of long "chord" connections crossing through the sphere's
+    // volume, independent of distance — gives that tangled wireframe-globe look.
+    const chordEdges = [];
+    for (let k = 0; k < 700; k++) {
+      chordEdges.push([Math.floor(Math.random() * N), Math.floor(Math.random() * N)]);
+    }
+
     let raf;
     const render = () => {
-      const speed = thinking ? 0.014 : 0.004;
+      const speed = thinking ? 0.014 : 0.005;
       rotRef.current += speed;
       const r = rotRef.current;
       ctx.clearRect(0, 0, size, size);
-      const cx = size / 2, cy = size / 2, R = 118;
+      const cx = size / 2, cy = size / 2, R = 178;
 
       const projected = points.map((p) => {
         const cosR = Math.cos(r), sinR = Math.sin(r);
@@ -1826,31 +1952,82 @@ function NeoOrb({ thinking }) {
         return { x: cx + x1 * R * scale, y: cy + p.y * R * scale, z: z1, scale };
       });
 
-      // connecting lines between near points
-      ctx.lineWidth = 0.6;
-      for (let i = 0; i < projected.length; i++) {
-        for (let j = i + 1; j < projected.length; j++) {
-          const a = points[i], b = points[j];
-          const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-          if (d < 0.42) {
-            const avgZ = (projected[i].z + projected[j].z) / 2;
-            const alpha = thinking ? 0.22 + avgZ * 0.18 : 0.10 + avgZ * 0.1;
-            ctx.strokeStyle = `rgba(0,255,120,${Math.max(0.05, alpha)})`;
-            ctx.beginPath();
-            ctx.moveTo(projected[i].x, projected[i].y);
-            ctx.lineTo(projected[j].x, projected[j].y);
-            ctx.stroke();
-          }
+      ctx.lineWidth = 0.5;
+      const drawEdges = (edges, baseAlpha) => {
+        for (const [i, j] of edges) {
+          const avgZ = (projected[i].z + projected[j].z) / 2;
+          const alpha = baseAlpha + avgZ * 0.12;
+          if (alpha <= 0.02) continue;
+          ctx.strokeStyle = `rgba(0,255,120,${Math.max(0.02, alpha)})`;
+          ctx.beginPath();
+          ctx.moveTo(projected[i].x, projected[i].y);
+          ctx.lineTo(projected[j].x, projected[j].y);
+          ctx.stroke();
         }
-      }
-      // points
+      };
+      drawEdges(chordEdges, thinking ? 0.06 : 0.035);
+      drawEdges(nearEdges, thinking ? 0.24 : 0.14);
+
       projected.forEach((p) => {
         const alpha = 0.35 + p.z * 0.4;
         ctx.fillStyle = `rgba(60,255,150,${Math.max(0.2, alpha)})`;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.4 * p.scale, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 1.3 * p.scale, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      // Animated "eye" at the core — iris glow, dilating pupil, radiating rays.
+      const eyeR = 34 + Math.sin(r * 6) * 1.5;
+      const pupilR = thinking ? 14 + Math.sin(r * 10) * 2 : 9;
+
+      // outer glow
+      const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, eyeR * 2.2);
+      glow.addColorStop(0, "rgba(120,255,190,0.55)");
+      glow.addColorStop(0.5, "rgba(0,255,120,0.18)");
+      glow.addColorStop(1, "rgba(0,255,120,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, eyeR * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // light rays
+      const rayCount = 14;
+      for (let i = 0; i < rayCount; i++) {
+        const angle = (i / rayCount) * Math.PI * 2 + r * 0.6;
+        const len = eyeR * (thinking ? 3.4 : 2.6) * (0.7 + 0.3 * Math.sin(r * 4 + i));
+        const x1 = cx + Math.cos(angle) * eyeR * 1.1;
+        const y1 = cy + Math.sin(angle) * eyeR * 1.1;
+        const x2 = cx + Math.cos(angle) * len;
+        const y2 = cy + Math.sin(angle) * len;
+        ctx.strokeStyle = `rgba(120,255,190,${thinking ? 0.14 : 0.07})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      // iris ring
+      ctx.strokeStyle = "rgba(60,255,150,0.9)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, eyeR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // iris fill
+      const iris = ctx.createRadialGradient(cx, cy, pupilR, cx, cy, eyeR);
+      iris.addColorStop(0, "rgba(180,255,220,0.9)");
+      iris.addColorStop(1, "rgba(0,255,120,0.15)");
+      ctx.fillStyle = iris;
+      ctx.beginPath();
+      ctx.arc(cx, cy, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // pupil
+      ctx.fillStyle = "#010A06";
+      ctx.beginPath();
+      ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
+      ctx.fill();
 
       raf = requestAnimationFrame(render);
     };
@@ -1858,14 +2035,20 @@ function NeoOrb({ thinking }) {
     return () => cancelAnimationFrame(raf);
   }, [thinking]);
 
-  return <canvas ref={canvasRef} className="block mx-auto" />;
+  return (
+    <div style={{ transform: speaking ? "scale(1.12)" : "scale(1)", transition: "transform 0.35s ease" }}>
+      <canvas ref={canvasRef} onClick={onClick} className="block mx-auto cursor-pointer" />
+    </div>
+  );
 }
 
-function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
+function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [queriesToday, setQueriesToday] = useState(0);
   const [listening, setListening] = useState(false);
+  const [heard, setHeard] = useState("");
+  const [speaking, setSpeaking] = useState(false);
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
   const thinkingRef = useRef(false);
@@ -1875,10 +2058,13 @@ function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, thinking]);
 
+  const requestIdRef = useRef(0);
+
   const send = async (text) => {
     if (!text || thinkingRef.current) return;
     thinkingRef.current = true;
     setThinking(true);
+    const myRequestId = ++requestIdRef.current;
     setMessages((m) => [...m, { role: "user", text }]);
     try {
       const { data, error } = await supabaseClient.functions.invoke("neo-assistant", {
@@ -1907,31 +2093,64 @@ function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
         },
       });
       if (error) throw error;
+      if (myRequestId !== requestIdRef.current) return; // cancelled — ignore this response
       const reply = data?.reply || "...";
       setMessages((m) => [...m, { role: "neo", text: reply }]);
       setQueriesToday((n) => n + 1);
       if (window.speechSynthesis) {
         const utter = new window.SpeechSynthesisUtterance(reply);
         utter.rate = 1.02;
+        utter.onstart = () => setSpeaking(true);
+        utter.onend = () => setSpeaking(false);
+        utter.onerror = () => setSpeaking(false);
         window.speechSynthesis.speak(utter);
       }
     } catch (e) {
-      setMessages((m) => [...m, { role: "neo", text: "Couldn't reach Neo — check the neo-assistant function and ANTHROPIC_API_KEY secret in Supabase." }]);
+      if (myRequestId !== requestIdRef.current) return;
+      setMessages((m) => [...m, { role: "neo", text: "Couldn't reach Neo — check the neo-assistant function and GROQ_API_KEY secret in Supabase." }]);
     } finally {
-      thinkingRef.current = false;
-      setThinking(false);
+      if (myRequestId === requestIdRef.current) {
+        thinkingRef.current = false;
+        setThinking(false);
+      }
     }
   };
 
+  // Clicking the orb: if Neo is currently thinking, cancel it (matches "click
+  // the orb to stop"). If idle, start a one-shot listen — no wake word needed,
+  // just talk right after clicking.
+  const orbClick = () => {
+    if (thinking) {
+      requestIdRef.current++; // invalidates the in-flight response
+      thinkingRef.current = false;
+      setThinking(false);
+      setMessages((m) => [...m, { role: "neo", text: "(stopped)" }]);
+      return;
+    }
+    if (!speechSupported) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const oneShot = new SR();
+    oneShot.lang = "en-US";
+    oneShot.continuous = false;
+    oneShot.interimResults = false;
+    oneShot.maxAlternatives = 1;
+    oneShot.onresult = (e) => {
+      const text = e.results[0][0].transcript.trim();
+      setHeard(text);
+      if (text) send(text);
+    };
+    try { oneShot.start(); } catch {}
+  };
+
   // Always-on listener: stays running in the background, only acts when it
-  // hears "hey neo" (or "hi neo") followed by a request.
+  // hears "neo" (with or without "hey"/"hi"/"ok" in front) followed by a request.
   useEffect(() => {
     if (!speechSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = "en-US";
     rec.continuous = true;
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.maxAlternatives = 1;
     let stoppedByUs = false;
 
@@ -1942,10 +2161,18 @@ function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
     };
     rec.onerror = () => { /* mic denied, or silence timeout — onend will retry */ };
     rec.onresult = (e) => {
-      const last = e.results[e.results.length - 1][0].transcript.trim();
-      const match = last.match(/\b(hey|hi|ok)\s+neo\b[,:]?\s*(.*)/i);
-      if (match) {
-        const command = match[2].trim();
+      const res = e.results[e.results.length - 1];
+      const transcript = res[0].transcript.trim();
+      setHeard(transcript);
+      if (!res.isFinal) return;
+
+      // Look for "neo" (or common mis-hearings of it) anywhere in the phrase,
+      // and treat everything after it as the actual request.
+      const lower = transcript.toLowerCase();
+      const wakeMatch = lower.match(/\b(neo|nio|neyo|theo|ne o)\b/);
+      if (wakeMatch) {
+        const cutAt = wakeMatch.index + wakeMatch[0].length;
+        const command = transcript.slice(cutAt).replace(/^[,:.\s]+/, "").trim();
         if (command) send(command);
       }
     };
@@ -1957,33 +2184,50 @@ function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
 
   const neoGreen = "#3CFF96";
   const neoDim = "#0B1A10";
+  const decisionsToday = queriesToday;
+  const retrievals24h = cards.length + tasks.length;
 
   return (
-    <div className="flex flex-col items-center -m-6 p-6 rounded-2xl" style={{ background: "#050806", minHeight: "calc(100vh - 160px)" }}>
-      <div className="relative mb-2">
-        <NeoOrb thinking={thinking} />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="fs-9 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.8 }}>
-            {thinking ? "thinking…" : "neo"}
-          </span>
+    <div className="-m-6 p-6 rounded-2xl" style={{ background: "#050806", minHeight: "calc(100vh - 160px)" }}>
+      <div className="flex items-center justify-between mb-8 fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.55 }}>
+        <span>NEO ENGINE / LIVE</span>
+        <span style={{ opacity: 0.7 }}>● all systems online</span>
+      </div>
+
+      <div className="flex items-center justify-center gap-16 flex-wrap">
+        <div className="max-w-xs">
+          <div className="fs-11 font-mono uppercase tracking-widest mb-2" style={{ color: neoGreen, opacity: 0.5 }}>
+            {!speechSupported ? "voice needs chrome" : listening ? "● listening for \u201cneo\u201d" : "mic off"}
+          </div>
+          <div className="fs-13 font-mono italic" style={{ color: neoGreen, opacity: 0.8 }}>
+            {thinking ? "Neo is thinking — click the orb to stop." : "Click the orb, or just say \u201c...neo\u201d, to ask something."}
+          </div>
+          {heard && (
+            <div className="fs-11 font-mono mt-3 italic" style={{ color: neoGreen, opacity: 0.4 }}>
+              heard: "{heard}"
+            </div>
+          )}
+        </div>
+
+        <NeoOrb thinking={thinking} speaking={speaking} onClick={orbClick} />
+
+        <div className="text-right">
+          <div className="mb-6">
+            <div className="text-3xl font-mono font-bold" style={{ color: neoGreen }}>{retrievals24h}</div>
+            <div className="fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.5 }}>retrievals 24h</div>
+          </div>
+          <div>
+            <div className="text-5xl font-mono font-bold" style={{ color: neoGreen }}>{decisionsToday}</div>
+            <div className="fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.5 }}>decisions today</div>
+          </div>
         </div>
       </div>
 
-      <div className="fs-10 font-mono uppercase tracking-widest mb-4" style={{ color: neoGreen, opacity: listening ? 0.85 : 0.35 }}>
-        {!speechSupported ? "voice needs chrome" : listening ? "● listening for \u201chey neo\u201d" : "mic off — reload to retry"}
-      </div>
-
-      <div className="flex items-center gap-6 mb-6 fs-10 font-mono uppercase tracking-wide" style={{ color: neoGreen, opacity: 0.6 }}>
-        <span>{cards.length} cards</span>
-        <span>{tasks.filter((t) => t.status !== "done").length} open tasks</span>
-        <span>{queriesToday} asked today</span>
-      </div>
-
-      <div className="w-full max-w-xl rounded-2xl p-4" style={{ background: neoDim, border: `1px solid ${neoGreen}33` }}>
+      <div className="w-full max-w-xl mx-auto mt-10 rounded-2xl p-4" style={{ background: neoDim, border: `1px solid ${neoGreen}33` }}>
         <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-3 pr-1">
           {messages.length === 0 && (
             <div className="fs-12 font-mono italic text-center py-6" style={{ color: neoGreen, opacity: 0.4 }}>
-              Say "Hey Neo, …" to ask about your {agency} pipeline, tasks, or stats.
+              Ask about your {agency} pipeline, tasks, or stats.
             </div>
           )}
           {messages.map((m, i) => (
@@ -2005,6 +2249,76 @@ function NeoPage({ agency, cards, tasks, models, stats, reels, trends }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------- notifications ----------
+
+function NotificationBell({ model, cards, tasks, trends, agency, models, persistModels, onNavigate }) {
+  const [open, setOpen] = useState(false);
+  const [frozen, setFrozen] = useState(null);
+  const lastSeen = model?.notifLastSeen || 0;
+  const myName = model?.name;
+
+  const newIdeas = cards.filter((c) => c.model === myName && c.source === "team" && c.createdAt > lastSeen);
+  const newCalendar = tasks.filter((t) => t.model === myName && t.createdAt > lastSeen);
+  const newTrends = trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ) && t.createdAt > lastSeen);
+  const live = { newIdeas, newCalendar, newTrends };
+  const total = newIdeas.length + newCalendar.length + newTrends.length;
+
+  const toggle = async () => {
+    if (!open) {
+      setFrozen(live); // snapshot what's new before marking as seen, so items don't disappear mid-view
+      setOpen(true);
+      if (total > 0) {
+        await persistModels(models.map((m) => (m.name === myName ? { ...m, notifLastSeen: Date.now() } : m)));
+      }
+    } else {
+      setOpen(false);
+    }
+  };
+
+  const shown = frozen || live;
+
+  return (
+    <div className="relative">
+      <button onClick={toggle} className="relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+        <Bell size={16} />
+        {total > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full c-bg-accent c-onaccent fs-9 font-mono font-bold flex items-center justify-center">
+            {total > 9 ? "9+" : total}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
+          {shown.newIdeas.length + shown.newCalendar.length + shown.newTrends.length === 0 && (
+            <div className="fs-12 c-faint font-mono italic text-center py-6">You're all caught up.</div>
+          )}
+          {shown.newIdeas.map((c) => (
+            <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+              <div className="fs-10 font-mono uppercase c-accent">New idea</div>
+              <div className="fs-12 c-text">{c.title || "Untitled scene"}</div>
+            </button>
+          ))}
+          {shown.newCalendar.map((t) => (
+            <button key={t.id} onClick={() => { onNavigate("calendar"); setOpen(false); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+              <div className="fs-10 font-mono uppercase c-success">Calendar</div>
+              <div className="fs-12 c-text">{t.title}{t.dueDate ? ` — due ${fmtDay(t.dueDate)}` : ""}</div>
+            </button>
+          ))}
+          {shown.newTrends.map((t) => (
+            <button key={t.id} onClick={() => { onNavigate("trending"); setOpen(false); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+              <div className="fs-10 font-mono uppercase" style={{ color: "#E2725B" }}>New trend</div>
+              <div className="fs-12 c-text">{t.title}</div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2351,15 +2665,55 @@ function ThisWeeksAsks({ tasks, restrictModel, onNavigate }) {
   );
 }
 
-function CreatorDashboard({ stats, tasks, restrictModel, onNavigate }) {
+function CreatorDashboard({ stats, tasks, restrictModel, onNavigate, bufferDailyStats }) {
   const mine = stats.filter((s) => s.model === restrictModel).sort((a, b) => b.weekOf.localeCompare(a.weekOf));
   const latest = mine[0];
   const prev = mine[1];
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+  const myBufferRows = (bufferDailyStats || []).filter((r) => r.model === restrictModel && r.statDate >= sevenDaysAgoStr);
+  const platformTotals = {};
+  myBufferRows.forEach((r) => {
+    const p = platformTotals[r.platform] || { platform: r.platform, impressions: 0, comments: 0, reactions: 0, reposts: 0, postCount: 0 };
+    p.impressions += r.impressions; p.comments += r.comments; p.reactions += r.reactions; p.reposts += r.reposts; p.postCount += r.postCount;
+    platformTotals[r.platform] = p;
+  });
+  const platformLabel = { ig: "Instagram", x: "X", tiktok: "TikTok", fb: "Facebook" };
+  const bufferSection = Object.values(platformTotals).length > 0 && (
+    <div className="flex gap-3 flex-wrap mb-6">
+      {Object.values(platformTotals).map((p) => (
+        <div key={p.platform} className="c-bg-surface border c-border rounded-xl px-4 py-3.5 flex-1 minw-180 hover-lift">
+          <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">This week on {platformLabel[p.platform] || p.platform}</div>
+          <div className="flex gap-4">
+            <div>
+              <div className="text-xl font-semibold c-text"><CountUp value={p.impressions} /></div>
+              <div className="fs-9 c-faint font-mono uppercase">impressions</div>
+            </div>
+            <div>
+              <div className="text-xl font-semibold c-text"><CountUp value={p.comments} /></div>
+              <div className="fs-9 c-faint font-mono uppercase">replies</div>
+            </div>
+            <div>
+              <div className="text-xl font-semibold c-text"><CountUp value={p.reactions} /></div>
+              <div className="fs-9 c-faint font-mono uppercase">reactions</div>
+            </div>
+            <div>
+              <div className="text-xl font-semibold c-text"><CountUp value={p.postCount} /></div>
+              <div className="fs-9 c-faint font-mono uppercase">posts</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   if (!latest) {
     return (
       <div>
         <ThisWeeksAsks tasks={tasks} restrictModel={restrictModel} onNavigate={onNavigate} />
+        {bufferSection}
         <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
           No stats yet. Ask your manager to add this week's numbers.
         </div>
@@ -2371,6 +2725,7 @@ function CreatorDashboard({ stats, tasks, restrictModel, onNavigate }) {
     <div>
       <GoalCard latest={latest} />
       <ThisWeeksAsks tasks={tasks} restrictModel={restrictModel} onNavigate={onNavigate} />
+      {bufferSection}
 
       <div className="flex gap-3 flex-wrap mb-6">
         <StatCardBig icon={DollarSign} label="OF earnings this week" value={`$${latest.ofEarnings.toLocaleString()}`}
@@ -2549,6 +2904,7 @@ function App() {
   const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
   const { value: reels, loading: reelsLoading, persist: persistReels } = usePersisted("pipeline:reels", []);
   const { value: trends, loading: trendsLoading, persist: persistTrends } = usePersisted("pipeline:trends", []);
+  const { value: bufferDailyStats, loading: bufferDailyStatsLoading } = usePersisted("pipeline:bufferDailyStats", []);
   const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPinCZ: "2748", adminPinUS: "1234" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = usePersisted("pipeline:integrations", DEFAULT_INTEGRATIONS);
   const [session, setSession] = useState(() => loadSavedSession());
@@ -2640,11 +2996,38 @@ function App() {
       <div className="flex min-h-screen">
         {/* Desktop sidebar */}
         <aside className="hidden md:flex w-56 border-r c-border c-bg-panel flex-shrink-0 flex-col">
-          <div className="px-4 py-5 flex items-center gap-2 border-b c-border">
-            <Clapperboard size={18} className="c-accent" />
-            <span className="text-xl font-extrabold tracking-tight c-text">
-              AGENCY OS
-            </span>
+          <div className="px-4 py-4 flex items-center justify-between border-b c-border">
+            <div className="flex items-center gap-2">
+              <Clapperboard size={18} className="c-accent" />
+              <span className="text-xl font-extrabold tracking-tight c-text">
+                AGENCY OS
+              </span>
+            </div>
+          </div>
+          <div className="px-4 py-3 flex items-center gap-2 border-b c-border">
+            {session.role === "admin" && (
+              <button onClick={() => setView("settings")} title="Settings"
+                className="p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+                <Lock size={15} />
+              </button>
+            )}
+            {session.role === "creator" && (
+              <NotificationBell model={models.find((m) => m.name === session.name)} cards={cards} tasks={tasks} trends={trends}
+                agency={session.agency} models={models} persistModels={persistModels} onNavigate={setView} />
+            )}
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-7 h-7 rounded-full c-bg-accent c-onaccent flex items-center justify-center fs-12 font-mono font-bold flex-shrink-0">
+                {(session.name || "?").slice(0, 1).toUpperCase()}
+              </div>
+              <div className="leading-tight min-w-0">
+                <div className="fs-12 font-semibold c-text truncate">{session.name}</div>
+                <div className="fs-9 font-mono uppercase tracking-wide c-faint">{session.agency} {session.role === "admin" ? "team" : ""}</div>
+              </div>
+            </div>
+            <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
+              title="Sign out" className="p-1.5 rounded-lg c-muted hover-warn hover-bg-surface transition-colors flex-shrink-0">
+              <LogOut size={15} />
+            </button>
           </div>
           <nav className="flex-1 px-2 py-3 space-y-1">
             {NAV.map((n) => {
@@ -2660,14 +3043,10 @@ function App() {
             })}
           </nav>
           <div className="px-4 py-3 border-t c-border">
-            <div className="flex items-center gap-2 mb-3">
-              <Circle size={7} fill="#6FB07F" color="#6FB07F" />
+            <div className="flex items-center gap-2">
+              <Circle size={7} fill="#6FB07F" color="#6FB07F" className="anim-pulse-dot" />
               <span className="fs-10 font-mono uppercase tracking-widest c-muted">All systems online</span>
             </div>
-            <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg fs-12 c-muted hover-bg-surface hover-warn transition-colors">
-              <LogOut size={14} /> Sign out {session.role === "creator" ? `(${session.name})` : ""}
-            </button>
           </div>
         </aside>
 
@@ -2680,12 +3059,26 @@ function App() {
                 AGENCY OS
               </span>
             </div>
-            <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }} className="c-muted p-1.5" aria-label="Sign out">
-              <LogOut size={17} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              {session.role === "admin" && (
+                <button onClick={() => setView("settings")} title="Settings" className="c-muted p-1.5" aria-label="Settings">
+                  <Lock size={16} />
+                </button>
+              )}
+              {session.role === "creator" && (
+                <NotificationBell model={models.find((m) => m.name === session.name)} cards={cards} tasks={tasks} trends={trends}
+                  agency={session.agency} models={models} persistModels={persistModels} onNavigate={setView} />
+              )}
+              <div className="w-6 h-6 rounded-full c-bg-accent c-onaccent flex items-center justify-center fs-11 font-mono font-bold">
+                {(session.name || "?").slice(0, 1).toUpperCase()}
+              </div>
+              <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }} className="c-muted p-1.5" aria-label="Sign out">
+                <LogOut size={17} />
+              </button>
+            </div>
           </div>
 
-          <main className="flex-1 px-4 md:px-6 py-4 md:py-6 overflow-x-hidden pb-24 md:pb-6">
+          <main key={currentView} className="flex-1 px-4 md:px-6 py-4 md:py-6 overflow-x-hidden pb-24 md:pb-6 anim-view">
             <div className="mb-5 md:mb-6">
               <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight c-text">
                 {NAV.find((n) => n.id === currentView)?.label}
@@ -2694,13 +3087,15 @@ function App() {
 
             {currentView === "dashboard" && (session.role === "admin"
               ? <Dashboard cards={scopedCards} models={agencyModels} stats={scopedStats} reels={scopedReels} onNavigate={setView} />
-              : <CreatorDashboard stats={stats} tasks={tasks} restrictModel={restrictModel} onNavigate={setView} />)}
+              : <CreatorDashboard stats={stats} tasks={tasks} restrictModel={restrictModel} onNavigate={setView} bufferDailyStats={bufferDailyStats} />)}
             {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
             {currentView === "trends" && <TrendManager trends={trends} persistTrends={persistTrends} />}
-            {currentView === "neo" && <NeoPage agency={session.agency} cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} />}
+            {currentView === "neo" && <NeoPage agency={session.agency} session={session} onNavigate={setView}
+              onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
+              cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} />}
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />}
