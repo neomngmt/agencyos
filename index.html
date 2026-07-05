@@ -1744,6 +1744,7 @@ function App() {
     { name: "Vivien", note: "", pin: "", onboarded: false, addedAt: Date.now() },
     { name: "Kuro", note: "", pin: "", onboarded: false, addedAt: Date.now() },
     { name: "Lucie", note: "", pin: "", onboarded: false, addedAt: Date.now() },
+    { name: "model", note: "Testing account", pin: "model", onboarded: false, alwaysOnboard: true, addedAt: Date.now() },
   ]);
   const { value: tasks, loading: tasksLoading, persist: persistTasks } = usePersisted("pipeline:tasks", []);
   const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
