@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>html,body{margin:0;padding:0;background:#0A0A0B;}</style>
 </head>
 <body>
@@ -163,38 +164,153 @@ const {
 } = Icons;
 
 // ---------------------------------------------------------------------------
-// Storage shim — localStorage-backed stand-in for Claude's window.storage API.
-// Same get/set/delete/list shape, so none of the app code below needs to change.
-// This is temporary: swap this block out once Supabase is wired in, so data is
-// shared between you and the models instead of living only in one browser.
+// Supabase-backed storage — implements the same get/set/delete/list shape as
+// Claude's window.storage API, so none of the app code below needs to change.
+// Each key below is backed by a real table (see supabase-schema.sql +
+// supabase-migration-2.sql), with camelCase <-> snake_case field mapping.
 // ---------------------------------------------------------------------------
+const SUPABASE_URL = "https://kvwwjyvkoiqsvpyzbcmn.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_LkaAa6azdXD1emOoN2rCOQ_E-4NSy7V";
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const TABLES = {
+  "pipeline:models": {
+    table: "models", mode: "list", idKey: "name",
+    toDb: (m) => ({
+      name: m.name, note: m.note || "", pin: m.pin || "", onboarded: !!m.onboarded,
+      ig_handle: m.igHandle || "", x_handle: m.xHandle || "", tiktok_handle: m.tiktokHandle || "",
+      of_url: m.ofUrl || "", drive_url: m.driveUrl || "", bio: m.bio || "",
+      bio_received_at: m.bioReceivedAt ? new Date(m.bioReceivedAt).toISOString() : null,
+      always_onboard: !!m.alwaysOnboard, agency: m.agency || "CZ",
+    }),
+    fromDb: (r) => ({
+      name: r.name, note: r.note || "", pin: r.pin || "", onboarded: !!r.onboarded,
+      igHandle: r.ig_handle || "", xHandle: r.x_handle || "", tiktokHandle: r.tiktok_handle || "",
+      ofUrl: r.of_url || "", driveUrl: r.drive_url || "", bio: r.bio || "",
+      bioReceivedAt: r.bio_received_at ? new Date(r.bio_received_at).getTime() : null,
+      alwaysOnboard: !!r.always_onboard, agency: r.agency || "CZ",
+      addedAt: r.added_at ? new Date(r.added_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:cards": {
+    table: "cards", mode: "list", idKey: "id",
+    toDb: (c) => ({
+      id: c.id, seq: c.seq, title: c.title || "", model: c.model || null,
+      scene_type: c.sceneType || "", location: c.location || "", deadline: c.deadline || null,
+      assignee: c.assignee || "", script_link: c.scriptLink || "", notes: c.notes || "",
+      stage: c.stage || "idea", source: c.source || "team",
+    }),
+    fromDb: (r) => ({
+      id: r.id, seq: r.seq, title: r.title || "", model: r.model,
+      sceneType: r.scene_type || "", location: r.location || "", deadline: r.deadline || "",
+      assignee: r.assignee || "", scriptLink: r.script_link || "", notes: r.notes || "",
+      stage: r.stage || "idea", source: r.source || "team",
+      createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:tasks": {
+    table: "tasks", mode: "list", idKey: "id",
+    toDb: (t) => ({
+      id: t.id, seq: t.seq, title: t.title || "", model: t.model || null,
+      assignee: t.assignee || "", due_date: t.dueDate || null, recurring: !!t.recurring,
+      status: t.status || "todo", notes: t.notes || "",
+    }),
+    fromDb: (r) => ({
+      id: r.id, seq: r.seq, title: r.title || "", model: r.model, assignee: r.assignee || "",
+      dueDate: r.due_date || "", recurring: !!r.recurring, status: r.status || "todo", notes: r.notes || "",
+      createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:stats": {
+    table: "stats", mode: "list", idKey: "id",
+    toDb: (s) => ({
+      id: s.id, model: s.model || null, week_of: s.weekOf || null,
+      of_earnings: s.ofEarnings || 0, earnings_goal: s.earningsGoal || 0,
+      of_subs: s.ofSubs || 0, ig_followers: s.igFollowers || 0, ig_reach: s.igReach || 0,
+    }),
+    fromDb: (r) => ({
+      id: r.id, model: r.model, weekOf: r.week_of || "",
+      ofEarnings: Number(r.of_earnings) || 0, earningsGoal: Number(r.earnings_goal) || 0,
+      ofSubs: r.of_subs || 0, igFollowers: r.ig_followers || 0, igReach: r.ig_reach || 0,
+      createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:reels": {
+    table: "reels", mode: "list", idKey: "id",
+    toDb: (r) => ({
+      id: r.id, model: r.model || null, week_of: r.weekOf || null, title: r.title || "", link: r.link || "",
+      views: r.views || 0, likes: r.likes || 0, shares: r.shares || 0, comments: r.comments || 0,
+    }),
+    fromDb: (row) => ({
+      id: row.id, model: row.model, weekOf: row.week_of || "", title: row.title || "", link: row.link || "",
+      views: row.views || 0, likes: row.likes || 0, shares: row.shares || 0, comments: row.comments || 0,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    }),
+  },
+  "pipeline:integrations": {
+    table: "integrations", mode: "list", idKey: "id",
+    toDb: (i) => ({ id: i.id, name: i.name || "", status: i.status || "planned", note: i.note || "", help: i.help || "", agency: i.agency || "CZ" }),
+    fromDb: (r) => ({ id: r.id, name: r.name || "", status: r.status || "planned", note: r.note || "", help: r.help || "", agency: r.agency || "CZ" }),
+  },
+  "pipeline:settings": {
+    table: "settings", mode: "singleton",
+    toDb: (s) => ({ id: 1, admin_pin_cz: s.adminPinCZ || "", admin_pin_us: s.adminPinUS || "" }),
+    fromDb: (r) => ({ adminPinCZ: r.admin_pin_cz || "", adminPinUS: r.admin_pin_us || "" }),
+  },
+};
+
 if (!window.storage) {
-  const PREFIX = "agencyos:";
   window.storage = {
     async get(key) {
+      const cfg = TABLES[key];
+      if (!cfg) return null;
       try {
-        const raw = localStorage.getItem(PREFIX + key);
-        return raw === null ? null : { key, value: raw };
-      } catch { return null; }
+        if (cfg.mode === "singleton") {
+          const { data, error } = await supabaseClient.from(cfg.table).select("*").eq("id", 1).maybeSingle();
+          if (error || !data) return null;
+          return { key, value: JSON.stringify(cfg.fromDb(data)) };
+        }
+        const { data, error } = await supabaseClient.from(cfg.table).select("*");
+        if (error) { console.error("storage.get", key, error); return null; }
+        return { key, value: JSON.stringify((data || []).map(cfg.fromDb)) };
+      } catch (e) { console.error("storage.get threw", key, e); return null; }
     },
     async set(key, value) {
-      try { localStorage.setItem(PREFIX + key, value); return { key, value }; }
-      catch { return null; }
+      const cfg = TABLES[key];
+      if (!cfg) return null;
+      try {
+        const parsed = JSON.parse(value);
+        if (cfg.mode === "singleton") {
+          const { error } = await supabaseClient.from(cfg.table).upsert(cfg.toDb(parsed));
+          if (error) { console.error("storage.set", key, error); return null; }
+          return { key, value };
+        }
+        const rows = parsed.map(cfg.toDb);
+        if (rows.length) {
+          const { error } = await supabaseClient.from(cfg.table).upsert(rows);
+          if (error) { console.error("storage.set upsert", key, error); return null; }
+        }
+        // Remove rows that are no longer present in the current array (handles deletes).
+        const { data: existing } = await supabaseClient.from(cfg.table).select(cfg.idKey);
+        const currentIds = new Set(rows.map((r) => r[cfg.idKey]));
+        const toDelete = (existing || []).map((r) => r[cfg.idKey]).filter((id) => !currentIds.has(id));
+        if (toDelete.length) {
+          await supabaseClient.from(cfg.table).delete().in(cfg.idKey, toDelete);
+        }
+        return { key, value };
+      } catch (e) { console.error("storage.set threw", key, e); return null; }
     },
     async delete(key) {
-      try { localStorage.removeItem(PREFIX + key); return { key, deleted: true }; }
-      catch { return null; }
-    },
-    async list(prefix) {
+      const cfg = TABLES[key];
+      if (!cfg) return null;
       try {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith(PREFIX + (prefix || ""))) keys.push(k.slice(PREFIX.length));
-        }
-        return { keys, prefix };
+        if (cfg.mode === "singleton") await supabaseClient.from(cfg.table).delete().eq("id", 1);
+        else await supabaseClient.from(cfg.table).delete().neq(cfg.idKey, "__none__");
+        return { key, deleted: true };
       } catch { return null; }
     },
+    async list() { return { keys: Object.keys(TABLES) }; },
   };
 }
 
@@ -585,7 +701,7 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
 
 // ---------- model manager ----------
 
-function ModelManager({ models, persistModels, cards }) {
+function ModelManager({ models, persistModels, cards, agency }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -595,8 +711,8 @@ function ModelManager({ models, persistModels, cards }) {
   const addModel = async () => {
     if (!name.trim()) return;
     await persistModels([...models, {
-      name: name.trim(), note, pin: pin.trim(), onboarded: false, addedAt: Date.now(),
-      igHandle: "", xHandle: "", tiktokHandle: "", driveUrl: "", bio: "",
+      name: name.trim(), note, pin: pin.trim(), onboarded: false, addedAt: Date.now(), agency: agency || "CZ",
+      igHandle: "", xHandle: "", tiktokHandle: "", ofUrl: "", driveUrl: "", bio: "",
     }]);
     setName(""); setNote(""); setPin(""); setAdding(false);
   };
@@ -1201,15 +1317,16 @@ function CalendarView({ cards, tasks, onNavigate, restrictModel }) {
 
 function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
   const [tab, setTab] = useState("team");
+  const [teamAgency, setTeamAgency] = useState(null);
   const [teamPin, setTeamPin] = useState("");
   const [creatorName, setCreatorName] = useState("");
   const [creatorPassword, setCreatorPassword] = useState("");
   const [error, setError] = useState("");
 
   const submitTeam = () => {
-    const required = settings.adminPin || "";
+    const required = (teamAgency === "US" ? settings.adminPinUS : settings.adminPinCZ) || "";
     if (required && teamPin !== required) { setError("Wrong PIN."); return; }
-    onLogin({ role: "admin", name: "Team" });
+    onLogin({ role: "admin", name: "Team", agency: teamAgency });
   };
 
   const matchedModel = models.find((mm) => mm.name.trim().toLowerCase() === creatorName.trim().toLowerCase());
@@ -1222,11 +1339,11 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
     if (!m.pin) {
       if (!creatorPassword) { setError("Choose a password to finish setting up your account."); return; }
       await onRegisterPassword(m.name, creatorPassword);
-      onLogin({ role: "creator", name: m.name });
+      onLogin({ role: "creator", name: m.name, agency: m.agency || "CZ" });
       return;
     }
     if (creatorPassword !== m.pin) { setError("Wrong name or password."); return; }
-    onLogin({ role: "creator", name: m.name });
+    onLogin({ role: "creator", name: m.name, agency: m.agency || "CZ" });
   };
 
   return (
@@ -1239,7 +1356,7 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
         </div>
 
         <div className="flex gap-1.5 c-bg-surface border c-border rounded-lg p-1 mb-5">
-          <button onClick={() => { setTab("team"); setError(""); }}
+          <button onClick={() => { setTab("team"); setTeamAgency(null); setError(""); }}
             className={`flex-1 flex items-center justify-center gap-1.5 fs-11 font-mono uppercase py-2 rounded-lg ${tab === "team" ? "c-bg-accent c-onaccent font-semibold" : "c-muted"}`}>
             <ShieldCheck size={13} /> Team
           </button>
@@ -1251,16 +1368,39 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
 
         <div className="c-bg-surface border c-border rounded-xl p-5">
           {tab === "team" ? (
-            <>
-              <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">PIN</label>
-              <input type="password" value={teamPin} onChange={(e) => setTeamPin(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitTeam()} autoFocus
-                className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-4 outline-none focus-border-accent" />
-              <button onClick={submitTeam}
-                className="w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
-                Enter dashboard
-              </button>
-            </>
+            !teamAgency ? (
+              <>
+                <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-2">Which agency?</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setTeamAgency("CZ")}
+                    className="flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent">
+                    🇨🇿 CZ Team
+                  </button>
+                  <button onClick={() => setTeamAgency("US")}
+                    className="flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent">
+                    🇺🇸 US Team
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="fs-10 uppercase tracking-wide c-muted font-mono">
+                    {teamAgency} PIN
+                  </label>
+                  <button onClick={() => { setTeamAgency(null); setTeamPin(""); setError(""); }} className="fs-10 font-mono c-faint hover-accent-text">
+                    ← switch
+                  </button>
+                </div>
+                <input type="password" value={teamPin} onChange={(e) => setTeamPin(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitTeam()} autoFocus
+                  className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-4 outline-none focus-border-accent" />
+                <button onClick={submitTeam}
+                  className="w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
+                  Enter dashboard
+                </button>
+              </>
+            )
           ) : (
             <>
               <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Your name</label>
@@ -1295,8 +1435,10 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
 // ---------- settings (admin pin) ----------
 
 const DEFAULT_INTEGRATIONS = [
-  { id: "infloww", name: "Infloww", status: "planned", note: "", help: "API is in Beta, request access from your Infloww contact." },
-  { id: "buffer", name: "Buffer", status: "planned", note: "", help: "Has a real public API (personal API key from Buffer settings)." },
+  { id: "infloww-cz", name: "Infloww", status: "planned", note: "", help: "API is in Beta, request access from your Infloww contact.", agency: "CZ" },
+  { id: "infloww-us", name: "Infloww", status: "planned", note: "", help: "API is in Beta, request access from your Infloww contact.", agency: "US" },
+  { id: "buffer-cz", name: "Buffer", status: "planned", note: "", help: "Has a real public API (personal API key from Buffer settings).", agency: "CZ" },
+  { id: "buffer-us", name: "Buffer", status: "planned", note: "", help: "Has a real public API (personal API key from Buffer settings).", agency: "US" },
 ];
 
 const STATUS_STYLES = {
@@ -1305,17 +1447,23 @@ const STATUS_STYLES = {
   planned: { label: "Not connected", color: "#5C5C63" },
 };
 
-function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations }) {
-  const [pin, setPin] = useState(settings.adminPin || "");
+function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency }) {
+  const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
+  const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
   const [saved, setSaved] = useState(false);
   const save = async () => {
-    await persistSettings({ ...settings, adminPin: pin.replace(/\D/g, "").slice(0, 4) });
+    await persistSettings({
+      ...settings,
+      adminPinCZ: pinCZ.replace(/\D/g, "").slice(0, 4),
+      adminPinUS: pinUS.replace(/\D/g, "").slice(0, 4),
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   const list = (integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS)
-    .filter((i) => DEFAULT_INTEGRATIONS.some((d) => d.id === i.id));
+    .filter((i) => DEFAULT_INTEGRATIONS.some((d) => d.id === i.id))
+    .filter((i) => (i.agency || "CZ") === agency);
   const updateIntegration = async (id, patch) => {
     const next = list.map((i) => (i.id === id ? { ...i, ...patch } : i));
     await persistIntegrations(next);
@@ -1324,10 +1472,19 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
   return (
     <div className="max-w-lg">
       <div className="mb-8">
-        <p className="c-muted text-sm mb-5">Set the team PIN used on the login screen.</p>
-        <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Team PIN</label>
-        <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="e.g. 4821"
-          className="w-full max-w-xs c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-4 outline-none focus-border-accent" />
+        <p className="c-muted text-sm mb-5">Set the team PIN for each agency, used on the login screen.</p>
+        <div className="grid grid-cols-2 gap-3 max-w-sm mb-4">
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">🇨🇿 CZ PIN</label>
+            <input value={pinCZ} onChange={(e) => setPinCZ(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="e.g. 2748"
+              className="w-full c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">🇺🇸 US PIN</label>
+            <input value={pinUS} onChange={(e) => setPinUS(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="e.g. 1234"
+              className="w-full c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text outline-none focus-border-accent" />
+          </div>
+        </div>
         <button onClick={save}
           className="py-2.5 px-4 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
           Save
@@ -1384,6 +1541,7 @@ function StatsManager({ stats, persistStats, models, reels, persistReels }) {
   const [model, setModel] = useState("");
   const [weekOf, setWeekOf] = useState(todayISO());
   const [ofEarnings, setOfEarnings] = useState("");
+  const [earningsGoal, setEarningsGoal] = useState("");
   const [ofSubs, setOfSubs] = useState("");
   const [igFollowers, setIgFollowers] = useState("");
   const [igReach, setIgReach] = useState("");
@@ -1403,12 +1561,12 @@ function StatsManager({ stats, persistStats, models, reels, persistReels }) {
     if (!model || !weekOf) return;
     const entry = {
       id: uid(), model, weekOf,
-      ofEarnings: Number(ofEarnings) || 0, ofSubs: Number(ofSubs) || 0,
+      ofEarnings: Number(ofEarnings) || 0, earningsGoal: Number(earningsGoal) || 0, ofSubs: Number(ofSubs) || 0,
       igFollowers: Number(igFollowers) || 0, igReach: Number(igReach) || 0,
       createdAt: Date.now(),
     };
     await persistStats([...stats, entry]);
-    setModel(""); setOfEarnings(""); setOfSubs(""); setIgFollowers(""); setIgReach(""); setAdding(false);
+    setModel(""); setOfEarnings(""); setEarningsGoal(""); setOfSubs(""); setIgFollowers(""); setIgReach(""); setAdding(false);
   };
 
   const deleteEntry = async (id) => {
@@ -1474,6 +1632,11 @@ function StatsManager({ stats, persistStats, models, reels, persistReels }) {
               className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
           </div>
           <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Weekly earnings goal ($)</label>
+            <input type="number" value={earningsGoal} onChange={(e) => setEarningsGoal(e.target.value)} placeholder="e.g. 2000"
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
             <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">OF subs</label>
             <input type="number" value={ofSubs} onChange={(e) => setOfSubs(e.target.value)}
               className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
@@ -1506,6 +1669,7 @@ function StatsManager({ stats, persistStats, models, reels, persistReels }) {
               <tr className="c-muted font-mono uppercase fs-10 border-b c-border">
                 <th className="text-left py-2 pr-3">Week</th>
                 <th className="text-right py-2 px-3">OF $</th>
+                <th className="text-right py-2 px-3">Goal</th>
                 <th className="text-right py-2 px-3">OF subs</th>
                 <th className="text-right py-2 px-3">IG followers</th>
                 <th className="text-right py-2 px-3">IG reach</th>
@@ -1517,6 +1681,7 @@ function StatsManager({ stats, persistStats, models, reels, persistReels }) {
                 <tr key={s.id} className="border-b c-border c-text group">
                   <td className="py-2 pr-3 font-mono">{fmtDay(s.weekOf)}</td>
                   <td className="py-2 px-3 text-right font-mono">${s.ofEarnings.toLocaleString()}</td>
+                  <td className="py-2 px-3 text-right font-mono c-faint">{s.earningsGoal ? `$${s.earningsGoal.toLocaleString()}` : "—"}</td>
                   <td className="py-2 px-3 text-right font-mono">{s.ofSubs.toLocaleString()}</td>
                   <td className="py-2 px-3 text-right font-mono">{s.igFollowers.toLocaleString()}</td>
                   <td className="py-2 px-3 text-right font-mono">{s.igReach.toLocaleString()}</td>
@@ -1666,21 +1831,74 @@ function StatCardBig({ icon: Icon, label, value, delta, color }) {
   );
 }
 
-function CreatorDashboard({ stats, restrictModel }) {
+function GoalCard({ latest }) {
+  const goal = latest.earningsGoal || 0;
+  const actual = latest.ofEarnings || 0;
+  if (!goal) return null;
+  const pct = Math.min(150, Math.round((actual / goal) * 100));
+  const hit = actual >= goal;
+  return (
+    <div className="c-bg-surface border rounded-xl p-5 mb-6" style={{ borderColor: hit ? "#6FB07F" : undefined }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="fs-11 uppercase tracking-widest c-muted font-mono">This week's earnings goal</span>
+        {hit && <span className="fs-11 font-mono c-success uppercase tracking-wide">🔥 Goal hit!</span>}
+      </div>
+      <div className="flex items-baseline gap-2 mb-3">
+        <span className="text-3xl font-extrabold c-text">${actual.toLocaleString()}</span>
+        <span className="c-faint fs-12 font-mono">/ ${goal.toLocaleString()} goal</span>
+      </div>
+      <div className="h-3 c-bg-app rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, backgroundColor: hit ? "#6FB07F" : "#E5335C", transition: "width 0.6s ease" }} />
+      </div>
+      <div className="fs-11 font-mono c-faint mt-1.5">{pct}% of goal{hit ? ", nice work" : ""}</div>
+    </div>
+  );
+}
+
+function ThisWeeksAsks({ tasks, restrictModel, onNavigate }) {
+  const open = tasks.filter((t) => t.model === restrictModel && t.status !== "done")
+    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+  if (open.length === 0) return null;
+  return (
+    <div className="c-bg-surface border c-border rounded-xl p-4 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <span className="fs-11 uppercase tracking-widest c-muted font-mono">This week, we need from you</span>
+        <button onClick={() => onNavigate("tasks")} className="fs-11 font-mono uppercase c-accent hover:underline">All tasks →</button>
+      </div>
+      <div className="space-y-2">
+        {open.slice(0, 5).map((t) => (
+          <div key={t.id} className="flex items-center gap-2 text-sm">
+            <CheckSquare size={14} className="c-faint flex-shrink-0" />
+            <span className="c-text flex-1">{t.title}</span>
+            {t.dueDate && <span className="fs-10 font-mono c-faint">{fmtDay(t.dueDate)}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CreatorDashboard({ stats, tasks, restrictModel, onNavigate }) {
   const mine = stats.filter((s) => s.model === restrictModel).sort((a, b) => b.weekOf.localeCompare(a.weekOf));
   const latest = mine[0];
   const prev = mine[1];
 
   if (!latest) {
     return (
-      <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
-        No stats yet. Ask your manager to add this week's numbers.
+      <div>
+        <ThisWeeksAsks tasks={tasks} restrictModel={restrictModel} onNavigate={onNavigate} />
+        <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
+          No stats yet. Ask your manager to add this week's numbers.
+        </div>
       </div>
     );
   }
 
   return (
     <div>
+      <GoalCard latest={latest} />
+      <ThisWeeksAsks tasks={tasks} restrictModel={restrictModel} onNavigate={onNavigate} />
+
       <div className="flex gap-3 flex-wrap mb-6">
         <StatCardBig icon={DollarSign} label="OF earnings this week" value={`$${latest.ofEarnings.toLocaleString()}`}
           delta={<DeltaTag current={latest.ofEarnings} previous={prev?.ofEarnings} />} color="#6FB07F" />
@@ -1847,16 +2065,16 @@ function clearSavedSession() {
 function App() {
   const { value: cards, loading: cardsLoading, persist: persistCards } = usePersisted("pipeline:cards", []);
   const { value: models, loading: modelsLoading, persist: persistModels } = usePersisted("pipeline:models", [
-    { name: "Anna", note: "", pin: "", onboarded: false, addedAt: Date.now() },
-    { name: "Vivien", note: "", pin: "", onboarded: false, addedAt: Date.now() },
-    { name: "Kuro", note: "", pin: "", onboarded: false, addedAt: Date.now() },
-    { name: "Lucie", note: "", pin: "", onboarded: false, addedAt: Date.now() },
-    { name: "model", note: "Testing account", pin: "model", onboarded: false, alwaysOnboard: true, addedAt: Date.now() },
+    { name: "Anna", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
+    { name: "Vivien", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
+    { name: "Kuro", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
+    { name: "Lucie", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
+    { name: "model", note: "Testing account", pin: "model", onboarded: false, alwaysOnboard: true, agency: "CZ", addedAt: Date.now() },
   ]);
   const { value: tasks, loading: tasksLoading, persist: persistTasks } = usePersisted("pipeline:tasks", []);
   const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
   const { value: reels, loading: reelsLoading, persist: persistReels } = usePersisted("pipeline:reels", []);
-  const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPin: "2748" });
+  const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPinCZ: "2748", adminPinUS: "1234" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = usePersisted("pipeline:integrations", DEFAULT_INTEGRATIONS);
   const [session, setSession] = useState(() => loadSavedSession());
   const [view, setView] = useState(null);
@@ -1906,6 +2124,38 @@ function App() {
   const NAV = session.role === "admin" ? NAV_ADMIN : NAV_CREATOR;
   const restrictModel = session.role === "creator" ? session.name : undefined;
   const currentView = view || "dashboard";
+
+  const isAdmin = session.role === "admin";
+  const agencyModels = isAdmin ? models.filter((m) => (m.agency || "CZ") === session.agency) : models;
+  const agencyModelNameSet = new Set(agencyModels.map((m) => m.name));
+
+  const scopedCards = isAdmin ? cards.filter((c) => agencyModelNameSet.has(c.model)) : cards;
+  const scopedTasks = isAdmin ? tasks.filter((t) => agencyModelNameSet.has(t.model)) : tasks;
+  const scopedStats = isAdmin ? stats.filter((s) => agencyModelNameSet.has(s.model)) : stats;
+  const scopedReels = isAdmin ? reels.filter((r) => agencyModelNameSet.has(r.model)) : reels;
+
+  const scopedPersistCards = isAdmin
+    ? async (next) => persistCards([...cards.filter((c) => !agencyModelNameSet.has(c.model)), ...next])
+    : persistCards;
+  const scopedPersistTasks = isAdmin
+    ? async (next) => persistTasks([...tasks.filter((t) => !agencyModelNameSet.has(t.model)), ...next])
+    : persistTasks;
+  const scopedPersistStats = isAdmin
+    ? async (next) => persistStats([...stats.filter((s) => !agencyModelNameSet.has(s.model)), ...next])
+    : persistStats;
+  const scopedPersistReels = isAdmin
+    ? async (next) => persistReels([...reels.filter((r) => !agencyModelNameSet.has(r.model)), ...next])
+    : persistReels;
+  const scopedPersistModels = isAdmin
+    ? async (next) => persistModels([...models.filter((m) => (m.agency || "CZ") !== session.agency), ...next])
+    : persistModels;
+  const scopedPersistIntegrations = isAdmin
+    ? async (next) => {
+        const currentList = integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS;
+        const otherAgencyItems = currentList.filter((i) => (i.agency || "CZ") !== session.agency);
+        await persistIntegrations([...otherAgencyItems, ...next]);
+      }
+    : persistIntegrations;
 
   return (
     <div className="min-h-screen c-bg-app" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -1967,15 +2217,15 @@ function App() {
             </div>
 
             {currentView === "dashboard" && (session.role === "admin"
-              ? <Dashboard cards={cards} models={models} stats={stats} reels={reels} onNavigate={setView} />
-              : <CreatorDashboard stats={stats} restrictModel={restrictModel} />)}
-            {currentView === "content" && <ContentDirector cards={cards} persistCards={persistCards} models={models} restrictModel={restrictModel} />}
-            {currentView === "calendar" && <CalendarView cards={cards} tasks={tasks} onNavigate={setView} restrictModel={restrictModel} />}
-            {currentView === "tasks" && <TaskManager tasks={tasks} persistTasks={persistTasks} models={models} restrictModel={restrictModel} />}
-            {currentView === "stats" && <StatsManager stats={stats} persistStats={persistStats} models={models} reels={reels} persistReels={persistReels} />}
-            {currentView === "models" && <ModelManager models={models} persistModels={persistModels} cards={cards} />}
+              ? <Dashboard cards={scopedCards} models={agencyModels} stats={scopedStats} reels={scopedReels} onNavigate={setView} />
+              : <CreatorDashboard stats={stats} tasks={tasks} restrictModel={restrictModel} onNavigate={setView} />)}
+            {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
+            {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
+            {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
+            {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
+            {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "submit" && <CreatorForm models={models} cards={cards} persistCards={persistCards} restrictModel={restrictModel} />}
-            {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={persistIntegrations} />}
+            {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />}
           </main>
         </div>
       </div>
