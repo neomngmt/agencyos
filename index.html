@@ -203,6 +203,8 @@ if (!window.storage) {
 // ---------------------------------------------------------------------------
 
 
+const CREATOR_BIBLE_URL = "https://neomngmt.github.io/creator-bible/";
+
 const STAGES = [
   { id: "idea", label: "Idea", code: "01", color: "#8B93A1" },
   { id: "script", label: "Script Ready", code: "02", color: "#5B8FA8" },
@@ -1223,10 +1225,9 @@ const STATUS_STYLES = {
 
 function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations }) {
   const [pin, setPin] = useState(settings.adminPin || "");
-  const [bibleUrl, setBibleUrl] = useState(settings.creatorBibleUrl || "");
   const [saved, setSaved] = useState(false);
   const save = async () => {
-    await persistSettings({ ...settings, adminPin: pin.replace(/\D/g, "").slice(0, 4), creatorBibleUrl: bibleUrl.trim() });
+    await persistSettings({ ...settings, adminPin: pin.replace(/\D/g, "").slice(0, 4) });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1254,13 +1255,9 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
 
       <div className="border-t c-border pt-6 mb-8">
         <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Creator Bible URL</label>
-        <p className="c-muted text-xs mb-2">Shown once to each creator right after her first login, embedded directly on the page via iframe. Can be a full URL on a separate site (e.g. your Creator Bible on its own GitHub Pages repo) — GitHub Pages doesn't block being embedded by default. This just won't render inside this Claude preview's own sandbox; test it after deploying for real.</p>
-        <input value={bibleUrl} onChange={(e) => setBibleUrl(e.target.value)} placeholder="https://yourname.github.io/creator-bible"
-          className="w-full c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-3 outline-none focus-border-accent" />
-        <button onClick={save}
-          className="py-2.5 px-4 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
-          Save
-        </button>
+        <p className="c-muted text-xs mb-2">
+          Fixed to <span className="c-text">{CREATOR_BIBLE_URL}</span>, shown once to each creator right after her first login.
+        </p>
       </div>
 
       <div className="border-t c-border pt-6">
@@ -1751,7 +1748,7 @@ function App() {
   const { value: tasks, loading: tasksLoading, persist: persistTasks } = usePersisted("pipeline:tasks", []);
   const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
   const { value: reels, loading: reelsLoading, persist: persistReels } = usePersisted("pipeline:reels", []);
-  const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPin: "2748", creatorBibleUrl: "" });
+  const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPin: "2748" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = usePersisted("pipeline:integrations", DEFAULT_INTEGRATIONS);
   const [session, setSession] = useState(() => loadSavedSession());
   const [view, setView] = useState(null);
@@ -1785,7 +1782,7 @@ function App() {
       return (
         <OnboardingScreen
           name={session.name}
-          url={settings.creatorBibleUrl}
+          url={CREATOR_BIBLE_URL}
           onContinue={async () => {
             setOnboardingDismissed(true);
             await persistModels(models.map((m) => (m.name === session.name ? { ...m, onboarded: true } : m)));
