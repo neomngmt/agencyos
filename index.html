@@ -1295,11 +1295,8 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
 // ---------- settings (admin pin) ----------
 
 const DEFAULT_INTEGRATIONS = [
-  { id: "onlyfans", name: "OnlyFans", status: "manual", note: "", help: "No official public API. Live sync not recommended, manual entry only." },
-  { id: "instagram", name: "Instagram / Social", status: "planned", note: "", help: "Needs a Business/Creator account linked to a Facebook Page, via Instagram Graph API." },
   { id: "infloww", name: "Infloww", status: "planned", note: "", help: "API is in Beta, request access from your Infloww contact." },
   { id: "buffer", name: "Buffer", status: "planned", note: "", help: "Has a real public API (personal API key from Buffer settings)." },
-  { id: "drive", name: "Google Drive", status: "planned", note: "", help: "Needs OAuth, only possible once this runs on a real backend." },
 ];
 
 const STATUS_STYLES = {
@@ -1317,7 +1314,8 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const list = integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS;
+  const list = (integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS)
+    .filter((i) => DEFAULT_INTEGRATIONS.some((d) => d.id === i.id));
   const updateIntegration = async (id, patch) => {
     const next = list.map((i) => (i.id === id ? { ...i, ...patch } : i));
     await persistIntegrations(next);
@@ -1734,15 +1732,18 @@ function OnboardingScreen({ name, url, onContinue, onQuestionnaireReceived }) {
   useEffect(() => {
     function handleMessage(event) {
       const data = event.data;
-      if (!data || data.source !== "creator-bible" || data.type !== "submitted") return;
-      onQuestionnaireReceived(data.celyFormular || data.chatterSheet || "");
-      setReceived(true);
-      setTimeout(() => setReceived(false), 4000);
+      if (!data || data.source !== "creator-bible") return;
+      if (data.type === "submitted") {
+        onQuestionnaireReceived(data.celyFormular || data.chatterSheet || "");
+        setReceived(true);
+        setTimeout(() => setReceived(false), 4000);
+      } else if (data.type === "continue") {
+        onContinue();
+      }
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onContinue, onQuestionnaireReceived]);
 
   return (
     <div className="c-bg-app" style={{ fontFamily: "Inter, sans-serif", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
