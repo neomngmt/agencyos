@@ -590,10 +590,14 @@ function ModelManager({ models, persistModels, cards }) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [pin, setPin] = useState("");
+  const [detailName, setDetailName] = useState(null);
 
   const addModel = async () => {
     if (!name.trim()) return;
-    await persistModels([...models, { name: name.trim(), note, pin: pin.trim(), onboarded: false, addedAt: Date.now() }]);
+    await persistModels([...models, {
+      name: name.trim(), note, pin: pin.trim(), onboarded: false, addedAt: Date.now(),
+      igHandle: "", xHandle: "", tiktokHandle: "", driveUrl: "", bio: "",
+    }]);
     setName(""); setNote(""); setPin(""); setAdding(false);
   };
   const removeModel = async (n) => {
@@ -605,11 +609,17 @@ function ModelManager({ models, persistModels, cards }) {
   const toggleAlwaysOnboard = async (n) => {
     await persistModels(models.map((m) => (m.name === n ? { ...m, alwaysOnboard: !m.alwaysOnboard } : m)));
   };
+  const saveDetail = async (updated) => {
+    await persistModels(models.map((m) => (m.name === updated.name ? updated : m)));
+    setDetailName(null);
+  };
+
+  const detailModel = models.find((m) => m.name === detailName);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="c-muted text-sm">Roster and per-model production load.</p>
+        <p className="c-muted text-sm">Roster, socials, Drive links, and completed questionnaires.</p>
         <button onClick={() => setAdding(true)}
           className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-3 py-1.5 rounded-lg font-semibold hover-bg-accent2">
           <Plus size={13} /> Add model
@@ -641,8 +651,9 @@ function ModelManager({ models, persistModels, cards }) {
           const active = own.filter((c) => c.stage !== "posted").length;
           const posted = own.filter((c) => c.stage === "posted").length;
           return (
-            <div key={m.name} className="c-bg-surface border c-border rounded-xl p-4 group relative">
-              <button onClick={() => removeModel(m.name)}
+            <div key={m.name} className="c-bg-surface border c-border rounded-xl p-4 group relative cursor-pointer hover-border-accent"
+              onClick={() => setDetailName(m.name)}>
+              <button onClick={(e) => { e.stopPropagation(); removeModel(m.name); }}
                 className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 c-muted hover-warn transition-opacity">
                 <Trash2 size={13} />
               </button>
@@ -656,19 +667,93 @@ function ModelManager({ models, persistModels, cards }) {
                 <span><span className="c-success">{posted}</span> posted</span>
                 <span><span className="c-text">{own.length}</span> total</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Lock size={11} className="c-faint" />
-                <input value={m.pin || ""} onChange={(e) => setModelPin(m.name, e.target.value)}
-                  placeholder="no password set"
-                  className="w-32 c-bg-app border c-border rounded-lg px-2 py-1 text-xs c-text outline-none focus-border-accent font-mono" />
-              </div>
-              <label className="flex items-center gap-1.5 fs-10 font-mono uppercase c-faint mt-2 cursor-pointer">
-                <input type="checkbox" checked={!!m.alwaysOnboard} onChange={() => toggleAlwaysOnboard(m.name)} />
-                Always show Creator Bible on login (testing)
-              </label>
+              <div className="fs-10 font-mono c-faint uppercase tracking-wide">Click for details →</div>
             </div>
           );
         })}
+      </div>
+
+      {detailModel && (
+        <ModelDetail model={detailModel} onClose={() => setDetailName(null)} onSave={saveDetail}
+          onSetPin={setModelPin} onToggleAlwaysOnboard={toggleAlwaysOnboard} />
+      )}
+    </div>
+  );
+}
+
+function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard }) {
+  const [form, setForm] = useState(model);
+  useEffect(() => setForm(model), [model]);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="c-bg-surface border c-border rounded-2xl w-full max-w-lg p-5 maxh-85vh overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <UserCircle2 size={20} className="c-accent" />
+            <span className="text-lg font-extrabold tracking-tight c-text">{model.name}</span>
+          </div>
+          <button onClick={onClose} className="c-muted hover-text-primary"><X size={18} /></button>
+        </div>
+
+        <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Niche / persona note</label>
+        <input value={form.note || ""} onChange={(e) => set("note", e.target.value)}
+          className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text mb-3 outline-none focus-border-accent" />
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1 flex items-center gap-1"><Instagram size={11} /> Instagram</label>
+            <input value={form.igHandle || ""} onChange={(e) => set("igHandle", e.target.value)} placeholder="@handle or full link"
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">X / Twitter</label>
+            <input value={form.xHandle || ""} onChange={(e) => set("xHandle", e.target.value)} placeholder="@handle or full link"
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">TikTok</label>
+            <input value={form.tiktokHandle || ""} onChange={(e) => set("tiktokHandle", e.target.value)} placeholder="@handle or full link"
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <div>
+            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Google Drive folder</label>
+            <input value={form.driveUrl || ""} onChange={(e) => set("driveUrl", e.target.value)} placeholder="https://drive.google.com/..."
+              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mb-4 fs-11 font-mono">
+          {form.igHandle && <a href={form.igHandle.startsWith("http") ? form.igHandle : `https://instagram.com/${form.igHandle.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="c-accent hover-accent-text flex items-center gap-1"><Instagram size={12} />Open IG →</a>}
+          {form.driveUrl && <a href={form.driveUrl} target="_blank" rel="noopener noreferrer" className="c-accent hover-accent-text">Open Drive →</a>}
+        </div>
+
+        <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Questionnaire / bio</label>
+        {model.bioReceivedAt ? (
+          <p className="fs-10 c-success font-mono mb-1">Auto-filled from her Creator Bible submission, {fmtDay(new Date(model.bioReceivedAt).toISOString().slice(0, 10))}</p>
+        ) : (
+          <p className="fs-10 c-faint font-mono mb-1">Not received yet — paste it manually from the Formspree email if needed.</p>
+        )}
+        <textarea value={form.bio || ""} onChange={(e) => set("bio", e.target.value)} rows={8}
+          placeholder="Paste her completed Creator Bible answers here once you get the Formspree email..."
+          className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text mb-4 outline-none focus-border-accent resize-none font-mono" />
+
+        <div className="flex items-center gap-1.5 mb-2">
+          <Lock size={11} className="c-faint" />
+          <input value={model.pin || ""} onChange={(e) => onSetPin(model.name, e.target.value)} placeholder="no password set"
+            className="w-32 c-bg-app border c-border rounded-lg px-2 py-1 text-xs c-text outline-none focus-border-accent font-mono" />
+          <span className="fs-10 c-faint font-mono">password</span>
+        </div>
+        <label className="flex items-center gap-1.5 fs-10 font-mono uppercase c-faint mb-4 cursor-pointer">
+          <input type="checkbox" checked={!!model.alwaysOnboard} onChange={() => onToggleAlwaysOnboard(model.name)} />
+          Always show Creator Bible on login (testing)
+        </label>
+
+        <button onClick={() => onSave(form)}
+          className="w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
+          Save changes
+        </button>
       </div>
     </div>
   );
@@ -1643,7 +1728,22 @@ function CreatorDashboard({ stats, restrictModel }) {
 
 // ---------- creator onboarding (first login) ----------
 
-function OnboardingScreen({ name, url, onContinue }) {
+function OnboardingScreen({ name, url, onContinue, onQuestionnaireReceived }) {
+  const [received, setReceived] = useState(false);
+
+  useEffect(() => {
+    function handleMessage(event) {
+      const data = event.data;
+      if (!data || data.source !== "creator-bible" || data.type !== "submitted") return;
+      onQuestionnaireReceived(data.celyFormular || data.chatterSheet || "");
+      setReceived(true);
+      setTimeout(() => setReceived(false), 4000);
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="c-bg-app" style={{ fontFamily: "Inter, sans-serif", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{fontImport}</style>
@@ -1658,6 +1758,12 @@ function OnboardingScreen({ name, url, onContinue }) {
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="fs-11 c-faint font-mono text-center px-4">(Creator Bible link not set yet, ask your manager.)</p>
+          </div>
+        )}
+        {received && (
+          <div className="c-bg-accent c-onaccent fs-11 font-mono uppercase tracking-wide px-3 py-2 rounded-lg"
+            style={{ position: "absolute", top: 12, right: 12 }}>
+            Saved to your profile ✓
           </div>
         )}
       </div>
@@ -1787,6 +1893,9 @@ function App() {
           onContinue={async () => {
             setOnboardingDismissed(true);
             await persistModels(models.map((m) => (m.name === session.name ? { ...m, onboarded: true } : m)));
+          }}
+          onQuestionnaireReceived={async (text) => {
+            await persistModels(models.map((m) => (m.name === session.name ? { ...m, bio: text, bioReceivedAt: Date.now() } : m)));
           }}
         />
       );
