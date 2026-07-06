@@ -1900,13 +1900,14 @@ function CreatorTrending({ trends, agency }) {
 function NeoOrb({ thinking, speaking, onClick }) {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
+  const pulseRef = useRef(0.2);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const size = 480;
+    const size = 340;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.width = size + "px";
@@ -1915,7 +1916,7 @@ function NeoOrb({ thinking, speaking, onClick }) {
 
     const N = 420;
     const points = [];
-    const golden = Math.PI * (3 - Math.sqrt(5));
+    const golden = Math.PI * (1 + Math.sqrt(5));
     for (let i = 0; i < N; i++) {
       const y = 1 - (i / (N - 1)) * 2;
       const radius = Math.sqrt(1 - y * y);
@@ -1923,130 +1924,170 @@ function NeoOrb({ thinking, speaking, onClick }) {
       points.push({ x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius });
     }
 
-    // Precompute edges once — local point distances never change (only the
-    // rotation does), so this avoids an O(N^2) scan every animation frame.
-    const nearEdges = [];
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        const a = points[i], b = points[j];
-        const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-        if (d < 0.22) nearEdges.push([i, j]);
-      }
-    }
-    // A fixed set of long "chord" connections crossing through the sphere's
-    // volume, independent of distance — gives that tangled wireframe-globe look.
-    const chordEdges = [];
-    for (let k = 0; k < 700; k++) {
-      chordEdges.push([Math.floor(Math.random() * N), Math.floor(Math.random() * N)]);
-    }
+    const cx = size / 2, cy = size / 2, R = 118;
+
+    const drawRing = (rx, ry, dash, alpha, rotDeg) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rotDeg);
+      ctx.strokeStyle = `rgba(57,255,106,${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    };
 
     let raf;
     const render = () => {
-      const speed = thinking ? 0.014 : 0.005;
+      const speed = thinking ? 0.013 : speaking ? 0.009 : 0.006;
       rotRef.current += speed;
+      pulseRef.current = 0.2 + Math.sin(Date.now() / (thinking ? 260 : 900)) * (thinking ? 0.3 : 0.15);
       const r = rotRef.current;
+      const pulse = pulseRef.current;
       ctx.clearRect(0, 0, size, size);
-      const cx = size / 2, cy = size / 2, R = 178;
 
-      const projected = points.map((p) => {
-        const cosR = Math.cos(r), sinR = Math.sin(r);
-        const x1 = p.x * cosR - p.z * sinR;
-        const z1 = p.x * sinR + p.z * cosR;
-        const scale = 1 / (1.6 - z1 * 0.6);
-        return { x: cx + x1 * R * scale, y: cy + p.y * R * scale, z: z1, scale };
-      });
+      drawRing(R + 34, R + 34, [2, 6], 0.25, r * 0.3);
+      drawRing(R + 22, R + 10, [], 0.18, -r * 0.5);
+      drawRing(R + 22, R + 10, [4, 4], 0.15, Math.PI / 2 - r * 0.5);
 
-      ctx.lineWidth = 0.5;
-      const drawEdges = (edges, baseAlpha) => {
-        for (const [i, j] of edges) {
-          const avgZ = (projected[i].z + projected[j].z) / 2;
-          const alpha = baseAlpha + avgZ * 0.12;
-          if (alpha <= 0.02) continue;
-          ctx.strokeStyle = `rgba(0,255,120,${Math.max(0.02, alpha)})`;
-          ctx.beginPath();
-          ctx.moveTo(projected[i].x, projected[i].y);
-          ctx.lineTo(projected[j].x, projected[j].y);
-          ctx.stroke();
-        }
-      };
-      drawEdges(chordEdges, thinking ? 0.06 : 0.035);
-      drawEdges(nearEdges, thinking ? 0.24 : 0.14);
+      const glowScale = speaking ? 1.12 : 1;
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, R * 0.95 * glowScale);
+      grad.addColorStop(0, `rgba(57,255,106,${0.16 + pulse * 0.12})`);
+      grad.addColorStop(1, "rgba(57,255,106,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 0.95 * glowScale, 0, Math.PI * 2);
+      ctx.fill();
 
-      projected.forEach((p) => {
-        const alpha = 0.35 + p.z * 0.4;
-        ctx.fillStyle = `rgba(60,255,150,${Math.max(0.2, alpha)})`;
+      const cosR = Math.cos(r), sinR = Math.sin(r);
+      const proj = points.map((p) => {
+        const x = p.x * cosR - p.z * sinR;
+        const z = p.x * sinR + p.z * cosR;
+        return { x, y: p.y, z };
+      }).sort((a, b) => a.z - b.z);
+
+      proj.forEach((p) => {
+        const depth = (p.z + 1) / 2;
+        const size2 = 0.6 + depth * 1.8 + pulse * 0.6;
+        const alpha = 0.25 + depth * 0.65;
+        const px = cx + p.x * R;
+        const py = cy + p.y * R * 0.98;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.3 * p.scale, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(120,255,160,${alpha})`;
+        ctx.shadowColor = "rgba(57,255,106,0.9)";
+        ctx.shadowBlur = 4 + depth * 4;
+        ctx.arc(px, py, size2, 0, Math.PI * 2);
         ctx.fill();
       });
-
-      // Animated "eye" at the core — iris glow, dilating pupil, radiating rays.
-      const eyeR = 34 + Math.sin(r * 6) * 1.5;
-      const pupilR = thinking ? 14 + Math.sin(r * 10) * 2 : 9;
-
-      // outer glow
-      const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, eyeR * 2.2);
-      glow.addColorStop(0, "rgba(120,255,190,0.55)");
-      glow.addColorStop(0.5, "rgba(0,255,120,0.18)");
-      glow.addColorStop(1, "rgba(0,255,120,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(cx, cy, eyeR * 2.2, 0, Math.PI * 2);
-      ctx.fill();
-
-      // light rays
-      const rayCount = 14;
-      for (let i = 0; i < rayCount; i++) {
-        const angle = (i / rayCount) * Math.PI * 2 + r * 0.6;
-        const len = eyeR * (thinking ? 3.4 : 2.6) * (0.7 + 0.3 * Math.sin(r * 4 + i));
-        const x1 = cx + Math.cos(angle) * eyeR * 1.1;
-        const y1 = cy + Math.sin(angle) * eyeR * 1.1;
-        const x2 = cx + Math.cos(angle) * len;
-        const y2 = cy + Math.sin(angle) * len;
-        ctx.strokeStyle = `rgba(120,255,190,${thinking ? 0.14 : 0.07})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-
-      // iris ring
-      ctx.strokeStyle = "rgba(60,255,150,0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(cx, cy, eyeR, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // iris fill
-      const iris = ctx.createRadialGradient(cx, cy, pupilR, cx, cy, eyeR);
-      iris.addColorStop(0, "rgba(180,255,220,0.9)");
-      iris.addColorStop(1, "rgba(0,255,120,0.15)");
-      ctx.fillStyle = iris;
-      ctx.beginPath();
-      ctx.arc(cx, cy, eyeR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // pupil
-      ctx.fillStyle = "#010A06";
-      ctx.beginPath();
-      ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.shadowBlur = 0;
 
       raf = requestAnimationFrame(render);
     };
     render();
     return () => cancelAnimationFrame(raf);
-  }, [thinking]);
+  }, [thinking, speaking]);
 
+  return <canvas ref={canvasRef} onClick={onClick} className="block mx-auto cursor-pointer" />;
+}
+
+function NeoRadar({ active }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const size = 160;
+    canvas.width = size * dpr; canvas.height = size * dpr;
+    canvas.style.width = size + "px"; canvas.style.height = size + "px";
+    ctx.scale(dpr, dpr);
+    const cx = size / 2, cy = size / 2, rad = size / 2 - 6;
+    let sweep = 0, raf;
+    const render = () => {
+      ctx.clearRect(0, 0, size, size);
+      ctx.strokeStyle = "rgba(57,255,106,0.3)";
+      ctx.lineWidth = 1;
+      [1, 0.66, 0.33].forEach((f) => { ctx.beginPath(); ctx.arc(cx, cy, rad * f, 0, Math.PI * 2); ctx.stroke(); });
+      ctx.beginPath(); ctx.moveTo(cx - rad, cy); ctx.lineTo(cx + rad, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - rad); ctx.lineTo(cx, cy + rad); ctx.stroke();
+
+      const grad = ctx.createConicGradient(sweep - 0.9, cx, cy);
+      grad.addColorStop(0, "rgba(57,255,106,0)");
+      grad.addColorStop(1, `rgba(57,255,106,${active ? 0.5 : 0.3})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, rad, sweep - 0.9, sweep);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(120,255,160,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(sweep) * rad, cy + Math.sin(sweep) * rad);
+      ctx.stroke();
+
+      sweep += active ? 0.045 : 0.02;
+      raf = requestAnimationFrame(render);
+    };
+    render();
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+  return <canvas ref={canvasRef} />;
+}
+
+function NeoWaveform({ amplitude }) {
+  const canvasRef = useRef(null);
+  const ampRef = useRef(amplitude);
+  ampRef.current = amplitude;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = 220, h = 60;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    ctx.scale(dpr, dpr);
+    let t = 0, raf;
+    const render = () => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(120,255,160,0.85)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      const amp = ampRef.current;
+      for (let x = 0; x < w; x++) {
+        const y = h / 2 + Math.sin(x * 0.09 + t) * amp * Math.sin(t * 0.6) + Math.sin(x * 0.2 + t * 2) * (amp * 0.35);
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      t += 0.06;
+      raf = requestAnimationFrame(render);
+    };
+    render();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={canvasRef} />;
+}
+
+function NeoClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const pad = (n) => n.toString().padStart(2, "0");
   return (
-    <div style={{ transform: speaking ? "scale(1.12)" : "scale(1)", transition: "transform 0.35s ease" }}>
-      <canvas ref={canvasRef} onClick={onClick} className="block mx-auto cursor-pointer" />
+    <div className="fs-11 font-mono text-right leading-tight" style={{ color: "#6f9a7a" }}>
+      <div style={{ color: "#3CFF96" }}>{pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}</div>
+      <div>{now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}</div>
     </div>
   );
 }
 
-function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends }) {
+function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends, bufferDailyStats }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [queriesToday, setQueriesToday] = useState(0);
@@ -2210,71 +2251,189 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   }, [speechSupported]);
 
   const neoGreen = "#3CFF96";
-  const neoDim = "#0B1A10";
-  const decisionsToday = queriesToday;
-  const retrievals24h = cards.length + tasks.length;
+  const textDim = "#6f9a7a";
+  const border = "rgba(57,255,106,0.25)";
+  const bgPanel = "#081008";
+  const amber = "#ffd24a";
+
+  // ---- real telemetry ----
+  const openTasksCount = tasks.filter((t) => t.status !== "done").length;
+  const relevantTrends = trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ));
+
+  // ---- financial strip: this calendar month's revenue vs a goal ----
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const statsThisMonth = stats.filter((s) => (s.weekOf || "") >= monthStart);
+  const monthRevenue = statsThisMonth.reduce((sum, s) => sum + (s.ofEarnings || 0), 0);
+  const latestGoalPerModel = models.map((m) => {
+    const mine = stats.filter((s) => s.model === m.name).sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
+    return mine[0]?.earningsGoal || 0;
+  });
+  const monthGoal = Math.max(1, latestGoalPerModel.reduce((a, b) => a + b, 0) * 4.3);
+  const monthPct = Math.min(100, Math.round((monthRevenue / monthGoal) * 100));
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+  // ---- agency stats grid ----
+  const latestPerModel = models.map((m) => stats.filter((s) => s.model === m.name).sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""))[0]).filter(Boolean);
+  const prevPerModel = models.map((m) => stats.filter((s) => s.model === m.name).sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""))[1]).filter(Boolean);
+  const activeSubs = latestPerModel.reduce((a, s) => a + (s.ofSubs || 0), 0);
+  const prevSubs = prevPerModel.reduce((a, s) => a + (s.ofSubs || 0), 0);
+  const newSubs7d = activeSubs - prevSubs;
+  const topReel = [...(reels || [])].sort((a, b) => (b.views || 0) - (a.views || 0))[0];
+  const revLastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+  const revThisMonthPrior = stats.filter((s) => (s.weekOf || "") >= revLastMonthStart && (s.weekOf || "") < monthStart).reduce((a, s) => a + (s.ofEarnings || 0), 0);
+  const revMomPct = revThisMonthPrior > 0 ? Math.round(((monthRevenue - revThisMonthPrior) / revThisMonthPrior) * 100) : null;
+
+  // ---- model table: revenue / subs / IG impressions / X impressions ----
+  const bufWeekAgo = new Date(); bufWeekAgo.setDate(bufWeekAgo.getDate() - 7);
+  const bufWeekAgoStr = bufWeekAgo.toISOString().slice(0, 10);
+  const impressionsFor = (modelName, platform) => (bufferDailyStats || [])
+    .filter((r) => r.model === modelName && r.platform === platform && r.statDate >= bufWeekAgoStr)
+    .reduce((a, r) => a + (r.impressions || 0), 0);
+  const fmtK = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 1000 ? (n / 1000).toFixed(1) + "K" : n ? String(n) : "—");
+
+  // ---- ambient/real log feed ----
+  const logLines = [];
+  messages.slice(-4).forEach((m) => logLines.unshift(m.role === "user" ? `you :: "${m.text.slice(0, 40)}"` : `neo :: "${m.text.slice(0, 40)}"`));
+  if (logLines.length < 4) {
+    [...(reels || [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 2).forEach((r) => logLines.push(`reel.logged :: ${r.model} — ${(r.views || 0).toLocaleString()} views`));
+    relevantTrends.slice(-2).forEach((t) => logLines.push(`trend.posted :: ${t.title?.slice(0, 30)}`));
+  }
 
   return (
-    <div className="-m-6 p-6 rounded-2xl" style={{ background: "#050806", minHeight: "calc(100vh - 160px)" }}>
-      <div className="flex items-center justify-between mb-8 fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.55 }}>
-        <span>NEO ENGINE / LIVE</span>
-        <span style={{ opacity: 0.7 }}>● all systems online</span>
+    <div className="-m-6 p-6" style={{ background: "radial-gradient(ellipse at 50% 0%, #061007 0%, #030403 70%)", minHeight: "calc(100vh - 160px)", fontFamily: "'JetBrains Mono', monospace" }}>
+      {/* mini topbar */}
+      <div className="flex items-center justify-between pb-3 mb-5" style={{ borderBottom: `1px solid ${border}` }}>
+        <div className="fs-11 font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>
+          NEO <span style={{ color: textDim, fontWeight: 400 }}>// AGENCY OS INTELLIGENCE SYSTEM</span>
+        </div>
+        <NeoClock />
       </div>
 
-      <div className="flex items-center justify-center gap-16 flex-wrap">
-        <div className="max-w-xs">
-          <div className="fs-11 font-mono uppercase tracking-widest mb-2" style={{ color: neoGreen, opacity: 0.5 }}>
-            {!speechSupported ? "voice needs chrome" : listening ? "● listening for \u201cneo\u201d" : "mic off"}
-          </div>
-          <div className="fs-13 font-mono italic" style={{ color: neoGreen, opacity: 0.8 }}>
-            {thinking ? "Neo is thinking — click the orb to stop." : "Click the orb, or just say \u201c...neo\u201d, to ask something."}
-          </div>
-          {heard && (
-            <div className="fs-11 font-mono mt-3 italic" style={{ color: neoGreen, opacity: 0.4 }}>
-              heard: "{heard}"
-            </div>
-          )}
+      {/* HUD panel */}
+      <div className="relative rounded p-5" style={{ border: `1px solid ${border}`, background: `linear-gradient(180deg, rgba(57,255,106,0.04), transparent 40%), ${bgPanel}` }}>
+        <div className="fs-10 tracking-widest mb-3" style={{ color: textDim, letterSpacing: "3px" }}>
+          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : "ONLINE"}</b> — {speechSupported ? (listening ? "LISTENING FOR INPUT" : "MIC STANDBY") : "VOICE NEEDS CHROME"}
         </div>
 
-        <NeoOrb thinking={thinking} speaking={speaking} onClick={orbClick} />
+        <div className="grid gap-4" style={{ gridTemplateColumns: "220px 1fr 220px" }}>
+          {/* left telemetry */}
+          <div className="fs-11" style={{ color: textDim }}>
+            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(57,255,106,0.12)" }}>
+              <span>ACTIVE MODELS</span><b style={{ color: neoGreen }}>{models.length}</b>
+            </div>
+            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(57,255,106,0.12)" }}>
+              <span>OPEN TASKS</span><b style={{ color: neoGreen }}>{openTasksCount}</b>
+            </div>
+            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(57,255,106,0.12)" }}>
+              <span>OPEN CARDS</span><b style={{ color: neoGreen }}>{cards.length}</b>
+            </div>
+            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(57,255,106,0.12)" }}>
+              <span>TRENDS SHARED</span><b style={{ color: neoGreen }}>{relevantTrends.length}</b>
+            </div>
 
-        <div className="text-right">
-          <div className="mb-6">
-            <div className="text-3xl font-mono font-bold" style={{ color: neoGreen }}>{retrievals24h}</div>
-            <div className="fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.5 }}>retrievals 24h</div>
+            <div className="mt-4 fs-10 leading-loose" style={{ color: "#1c8f3a" }}>
+              {logLines.length === 0 && <div style={{ color: textDim, fontStyle: "italic" }}>no recent activity</div>}
+              {logLines.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
           </div>
+
+          {/* center sphere */}
+          <div className="flex flex-col items-center justify-center">
+            <NeoOrb thinking={thinking} speaking={speaking} onClick={orbClick} />
+            <div className="fs-10 tracking-widest mt-1" style={{ color: textDim, letterSpacing: "3px" }}>
+              N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
+            </div>
+            <div className="fs-11 italic mt-2 text-center max-w-xs" style={{ color: neoGreen, opacity: 0.85 }}>
+              {thinking ? "thinking — click the orb to stop." : "click the orb, or just talk, to ask something."}
+            </div>
+            {heard && <div className="fs-10 italic mt-1" style={{ color: neoGreen, opacity: 0.4 }}>heard: "{heard}"</div>}
+          </div>
+
+          {/* right radar + waveform */}
+          <div className="flex flex-col items-center">
+            <div className="fs-10 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>PROXIMITY</div>
+            <NeoRadar active={listening || thinking} />
+            <div className="fs-10 tracking-widest mt-3 mb-1.5" style={{ color: textDim, letterSpacing: "2px" }}>AUDIO I/O</div>
+            <NeoWaveform amplitude={speaking ? 9 : listening ? 4 : 1.5} />
+          </div>
+        </div>
+
+        {/* financial strip */}
+        <div className="flex items-center gap-7 flex-wrap mt-6 pt-4" style={{ borderTop: `1px solid ${border}` }}>
           <div>
-            <div className="text-5xl font-mono font-bold" style={{ color: neoGreen }}>{decisionsToday}</div>
-            <div className="fs-10 font-mono uppercase tracking-widest" style={{ color: neoGreen, opacity: 0.5 }}>decisions today</div>
+            <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>PRIMARY OBJECTIVE — MONTHLY REVENUE</div>
+            <div className="text-3xl font-bold" style={{ color: amber, textShadow: "0 0 12px rgba(255,210,74,0.45)" }}><CountUp value={monthRevenue} prefix="$" /></div>
+          </div>
+          <div className="flex gap-5">
+            <div className="fs-13" style={{ color: neoGreen }}>
+              ${Math.round(monthGoal).toLocaleString()}
+              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>GOAL</span>
+            </div>
+            <div className="fs-13" style={{ color: neoGreen }}>
+              ${Math.max(0, Math.round(monthGoal - monthRevenue)).toLocaleString()}
+              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>REMAINING</span>
+            </div>
+          </div>
+          <div className="flex-1 minw-180">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#0c3818" }}>
+              <div className="h-full transition-all" style={{ width: `${monthPct}%`, background: `linear-gradient(90deg, #1c8f3a, ${neoGreen})`, boxShadow: `0 0 8px ${neoGreen}88` }} />
+            </div>
+            <div className="flex justify-between fs-9 mt-1" style={{ color: textDim, letterSpacing: "1px" }}>
+              <span>DAY {dayOfMonth}/{daysInMonth}</span><span>{monthPct}%</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="w-full max-w-xl mx-auto mt-10 rounded-2xl p-4" style={{ background: neoDim, border: `1px solid ${neoGreen}33` }}>
-        <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-3 pr-1">
-          {messages.length === 0 && (
-            <div className="fs-12 font-mono italic text-center py-6" style={{ color: neoGreen, opacity: 0.4 }}>
-              Ask about your {agency} pipeline, tasks, or stats.
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <div key={i} className={`text-sm ${m.role === "user" ? "text-right" : ""}`}>
-              <div className="inline-block px-3 py-2 rounded-xl max-w-[85%] font-mono"
-                style={m.role === "user"
-                  ? { background: neoGreen, color: "#04120A" }
-                  : { background: "#0F2418", color: neoGreen, border: `1px solid ${neoGreen}33` }}>
-                {m.text}
-              </div>
-            </div>
-          ))}
-          {thinking && (
-            <div className="text-sm">
-              <div className="inline-block px-3 py-2 rounded-xl fs-12 font-mono" style={{ background: "#0F2418", color: neoGreen, opacity: 0.7, border: `1px solid ${neoGreen}33` }}>
-                thinking…
-              </div>
-            </div>
-          )}
+      {/* agency stats (team only — this whole page already is) */}
+      <div className="flex items-center gap-3 mt-10 mb-4">
+        <div className="fs-11 tracking-widest px-2.5 py-1 rounded" style={{ color: textDim, letterSpacing: "3px", border: `1px solid ${border}` }}>
+          AGENCY STATS
+          <span className="fs-9 ml-2 px-1.5 py-0.5 rounded" style={{ color: amber, border: "1px solid rgba(255,210,74,0.35)", letterSpacing: "2px" }}>TEAM ONLY</span>
         </div>
+        <div className="flex-1 h-px" style={{ background: border }} />
+      </div>
+
+      <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <div className="p-4" style={{ border: `1px solid ${border}`, background: bgPanel }}>
+          <div className="fs-9 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>REVENUE THIS MONTH</div>
+          <div className="text-2xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>$<CountUp value={monthRevenue} /></div>
+          {revMomPct !== null && <div className="fs-10 mt-1" style={{ color: revMomPct >= 0 ? "#1c8f3a" : "#ff5b5b" }}>{revMomPct >= 0 ? "▲" : "▼"} {Math.abs(revMomPct)}% vs last month</div>}
+        </div>
+        <div className="p-4" style={{ border: `1px solid ${border}`, background: bgPanel }}>
+          <div className="fs-9 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>ACTIVE SUBS</div>
+          <div className="text-2xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}><CountUp value={activeSubs} /></div>
+          <div className="fs-10 mt-1" style={{ color: "#1c8f3a" }}>{newSubs7d >= 0 ? "▲" : "▼"} {Math.abs(newSubs7d)} vs last week</div>
+        </div>
+        <div className="p-4" style={{ border: `1px solid ${border}`, background: bgPanel }}>
+          <div className="fs-9 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>NEW SUBS (7D)</div>
+          <div className="text-2xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}><CountUp value={Math.max(0, newSubs7d)} /></div>
+        </div>
+        <div className="p-4" style={{ border: `1px solid ${border}`, background: bgPanel }}>
+          <div className="fs-9 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>TOP REEL VIEWS</div>
+          <div className="text-2xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>{topReel ? fmtK(topReel.views) : "—"}</div>
+          {topReel && <div className="fs-10 mt-1" style={{ color: "#1c8f3a" }}>{topReel.model} — "{topReel.title?.slice(0, 24)}"</div>}
+        </div>
+      </div>
+
+      <div className="mt-4" style={{ border: `1px solid ${border}`, background: bgPanel }}>
+        <div className="grid fs-9 tracking-wide px-4 py-2.5" style={{ gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr", color: textDim, letterSpacing: "1.5px", borderBottom: `1px solid ${border}` }}>
+          <span>MODEL</span><span>REVENUE</span><span>SUBS</span><span>IG IMPR.</span><span>X IMPR.</span>
+        </div>
+        {models.map((m) => {
+          const latest = stats.filter((s) => s.model === m.name).sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""))[0];
+          return (
+            <div key={m.name} className="grid fs-12 px-4 py-2.5" style={{ gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr", color: neoGreen, borderBottom: "1px dashed rgba(57,255,106,0.1)" }}>
+              <span style={{ color: "#dffce6", fontWeight: 600 }}>{m.name}</span>
+              <span>{latest ? `$${latest.ofEarnings.toLocaleString()}` : <span style={{ color: textDim }}>—</span>}</span>
+              <span>{latest ? latest.ofSubs.toLocaleString() : <span style={{ color: textDim }}>—</span>}</span>
+              <span>{fmtK(impressionsFor(m.name, "ig")) === "—" ? <span style={{ color: textDim }}>—</span> : fmtK(impressionsFor(m.name, "ig"))}</span>
+              <span>{fmtK(impressionsFor(m.name, "x")) === "—" ? <span style={{ color: textDim }}>—</span> : fmtK(impressionsFor(m.name, "x"))}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -3124,7 +3283,7 @@ function App() {
             {currentView === "trends" && <TrendManager trends={trends} persistTrends={persistTrends} />}
             {currentView === "neo" && <NeoPage agency={session.agency} session={session} onNavigate={setView}
               onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
-              cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} />}
+              cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} />}
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "settings" && <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />}
