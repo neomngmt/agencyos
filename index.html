@@ -2064,6 +2064,36 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   }, [messages, thinking]);
 
   const requestIdRef = useRef(0);
+  const voicesRef = useRef([]);
+
+  // Chrome loads TTS voices asynchronously — grab them as soon as they're
+  // ready, and again if the browser tells us the list changed.
+  useEffect(() => {
+    if (!window.speechSynthesis) return;
+    const loadVoices = () => { voicesRef.current = window.speechSynthesis.getVoices(); };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  const speakText = (text) => {
+    if (!window.speechSynthesis) return;
+    // Chrome's speech queue can get silently stuck (e.g. after a tab switch,
+    // or if speak() was called again before the last one finished) — clearing
+    // it first is the standard fix for "speak() does nothing, no error."
+    window.speechSynthesis.cancel();
+    const utter = new window.SpeechSynthesisUtterance(text);
+    utter.rate = 1.02;
+    const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
+    const preferred = voices.find((v) => v.lang?.startsWith("en") && /female|Samantha|Google US English/i.test(v.name)) || voices.find((v) => v.lang?.startsWith("en")) || voices[0];
+    if (preferred) utter.voice = preferred;
+    utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
+    utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
+    utter.onerror = () => { setSpeaking(false); speakingRef.current = false; };
+    // A second known Chrome quirk: speak() sometimes needs a resume() nudge
+    // right after, especially on the very first call on a page.
+    window.speechSynthesis.speak(utter);
+    setTimeout(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 50);
+  };
 
   const send = async (text) => {
     if (!text || thinkingRef.current) return;
@@ -2102,14 +2132,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       const reply = data?.reply || "...";
       setMessages((m) => [...m, { role: "neo", text: reply }]);
       setQueriesToday((n) => n + 1);
-      if (window.speechSynthesis) {
-        const utter = new window.SpeechSynthesisUtterance(reply);
-        utter.rate = 1.02;
-        utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
-        utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
-        utter.onerror = () => { setSpeaking(false); speakingRef.current = false; };
-        window.speechSynthesis.speak(utter);
-      }
+      speakText(reply);
     } catch (e) {
       if (myRequestId !== requestIdRef.current) return;
       setMessages((m) => [...m, { role: "neo", text: "Couldn't reach Neo — check the neo-assistant function and GROQ_API_KEY secret in Supabase." }]);
