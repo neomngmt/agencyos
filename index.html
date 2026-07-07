@@ -1617,6 +1617,8 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 .connector{ width:1px; height:64px; margin:0 auto 0; position:relative; }
 .connector-line{ position:absolute; inset:0; background:linear-gradient(var(--lp-border), var(--lp-green-dim)); transform-origin:top; transform:scaleY(0); }
 .connector-dot{ position:absolute; top:0%; left:50%; transform:translate(-50%,-50%); width:9px; height:9px; border-radius:50%; background:var(--lp-green); box-shadow:0 0 10px var(--lp-green); opacity:0; }
+.connector.desktop-only{ display:none; }
+@media (min-width:861px){ .connector.desktop-only{ display:block; } }
 
 .panel{ margin-top:0; border:1px solid var(--lp-border); border-radius:16px; background:linear-gradient(180deg, rgba(18,179,76,0.04), transparent 40%), var(--lp-panel); overflow:hidden; }
 
@@ -2190,6 +2192,7 @@ const LANDING_PAGE_BODY = `
       <div class="tag mono">PROTOCOL</div>
       <h2>Three moves. <span class="script-accent">Then it runs.</span></h2>
     </div>
+    <div class="connector desktop-only"><div class="connector-line"></div><div class="connector-dot"></div></div>
     <div class="protocol-grid">
       <div class="protocol-card" data-reveal>
         <div class="protocol-no">01</div>
@@ -2218,6 +2221,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">One for the team, one for the roster. Both just need a name and a password.</p>
     </div>
 
+    <div class="connector desktop-only"><div class="connector-line"></div><div class="connector-dot"></div></div>
     <div class="doors-grid">
       <div class="door-card tilt-card" data-reveal>
         <div class="door-label mono">DOOR 01</div>
