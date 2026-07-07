@@ -3582,12 +3582,16 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
   const activeOneShotRef = useRef(null);
 
+  const micPrimedRef = useRef(false);
+
   const startActiveListen = () => {
     if (!speechSupported) return;
-    activeListenRef.current = true;
-    setActiveListeningDebounced(true);
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const oneShot = new SR();
+
+    const begin = () => {
+      activeListenRef.current = true;
+      setActiveListeningDebounced(true);
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const oneShot = new SR();
     activeOneShotRef.current = oneShot;
     oneShot.lang = "en-US";
     // continuous + manual stop-on-final, instead of relying on the browser's
@@ -3620,6 +3624,22 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     oneShot.onend = () => stopActive();
     oneShot.onerror = (e) => stopActive(e?.error || "unknown error");
     try { oneShot.start(); } catch (err) { stopActive(err?.message || "failed to start"); }
+    };
+
+    // First time ever: explicitly ask for the mic via getUserMedia so Safari
+    // shows its native permission prompt reliably, then release the stream
+    // immediately (SpeechRecognition manages its own audio capture).
+    if (!micPrimedRef.current && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          micPrimedRef.current = true;
+          stream.getTracks().forEach((t) => t.stop());
+          begin();
+        })
+        .catch(() => begin());
+    } else {
+      begin();
+    }
   };
 
   const orbClick = () => {
