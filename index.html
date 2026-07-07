@@ -3190,10 +3190,11 @@ function CreatorTrending({ trends, agency }) {
 
 // ---------- Neo (AI assistant) ----------
 
-function NeoOrb({ thinking, speaking, onClick }) {
+function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
   const pulseRef = useRef(0.2);
+  const scaleRef = useRef(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -3217,7 +3218,30 @@ function NeoOrb({ thinking, speaking, onClick }) {
       points.push({ x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius });
     }
 
-    const cx = size / 2, cy = size / 2, R = 118;
+    // Precompute a mesh: each point connects to its handful of nearest
+    // neighbors, forming the dense "plexus ball" look when active. This is
+    // O(n^2) but only runs once at setup, not per frame.
+    const K = 3;
+    const edges = [];
+    const seen = new Set();
+    for (let i = 0; i < N; i++) {
+      const dists = [];
+      for (let j = 0; j < N; j++) {
+        if (i === j) continue;
+        const dx = points[i].x - points[j].x, dy = points[i].y - points[j].y, dz = points[i].z - points[j].z;
+        dists.push([dx * dx + dy * dy + dz * dz, j]);
+      }
+      dists.sort((a, b) => a[0] - b[0]);
+      for (let k = 0; k < K; k++) {
+        const j = dists[k][1];
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push([i, j]);
+      }
+    }
+
+    const cx = size / 2, cy = size / 2, baseR = 118;
 
     const drawRing = (rx, ry, dash, alpha, rotDeg) => {
       ctx.save();
@@ -3234,11 +3258,24 @@ function NeoOrb({ thinking, speaking, onClick }) {
 
     let raf;
     const render = () => {
-      const speed = thinking ? 0.013 : speaking ? 0.009 : 0.006;
+      const active = thinking || speaking || listening;
+      const speed = thinking ? 0.013 : speaking ? 0.011 : listening ? 0.008 : 0.006;
       rotRef.current += speed;
-      pulseRef.current = 0.2 + Math.sin(Date.now() / (thinking ? 260 : 900)) * (thinking ? 0.3 : 0.15);
+
+      const sinceBump = Date.now() - (speakBumpRef?.current || 0);
+      const bump = speaking && sinceBump < 220 ? (1 - sinceBump / 220) * 0.55 : 0;
+      const basePulse = thinking ? 260 : speaking ? 180 : 900;
+      const baseAmp = thinking ? 0.3 : speaking ? 0.22 : 0.15;
+      pulseRef.current = 0.2 + Math.sin(Date.now() / basePulse) * baseAmp + bump;
+
+      // Smoothly grow the orb when active, ease back down when idle.
+      const targetScale = active ? 1.14 : 1;
+      scaleRef.current += (targetScale - scaleRef.current) * 0.08;
+
       const r = rotRef.current;
       const pulse = pulseRef.current;
+      const scale = scaleRef.current;
+      const R = baseR * scale;
       ctx.clearRect(0, 0, size, size);
 
       drawRing(R + 34, R + 34, [2, 6], 0.25, r * 0.3);
@@ -3259,9 +3296,25 @@ function NeoOrb({ thinking, speaking, onClick }) {
         const x = p.x * cosR - p.z * sinR;
         const z = p.x * sinR + p.z * cosR;
         return { x, y: p.y, z };
-      }).sort((a, b) => a.z - b.z);
+      });
 
-      proj.forEach((p) => {
+      // Mesh lines between nearby points — only when active, fading in/out
+      // with the same scale/opacity transition as the grow animation.
+      const meshAlpha = Math.max(0, (scale - 1) / 0.14);
+      if (meshAlpha > 0.02) {
+        ctx.lineWidth = 0.6;
+        edges.forEach(([i, j]) => {
+          const a = proj[i], b = proj[j];
+          const depth = ((a.z + b.z) / 2 + 1) / 2;
+          ctx.strokeStyle = `rgba(120,255,160,${(0.06 + depth * 0.22) * meshAlpha})`;
+          ctx.beginPath();
+          ctx.moveTo(cx + a.x * R, cy + a.y * R * 0.98);
+          ctx.lineTo(cx + b.x * R, cy + b.y * R * 0.98);
+          ctx.stroke();
+        });
+      }
+
+      proj.sort((a, b) => a.z - b.z).forEach((p) => {
         const depth = (p.z + 1) / 2;
         const size2 = 0.6 + depth * 1.8 + pulse * 0.6;
         const alpha = 0.25 + depth * 0.65;
@@ -3280,10 +3333,11 @@ function NeoOrb({ thinking, speaking, onClick }) {
     };
     render();
     return () => cancelAnimationFrame(raf);
-  }, [thinking, speaking]);
+  }, [thinking, speaking, listening]);
 
   return <canvas ref={canvasRef} onClick={onClick} className="block mx-auto cursor-pointer" />;
 }
+
 
 function NeoRadar({ active }) {
   const canvasRef = useRef(null);
@@ -3388,8 +3442,10 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const [heard, setHeard] = useState("");
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
+  const speakBumpRef = useRef(0);
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
+  const listeningDebounceRef = useRef(null);
   const thinkingRef = useRef(false);
   const speechSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -3423,6 +3479,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
     utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
     utter.onerror = () => { setSpeaking(false); speakingRef.current = false; };
+    utter.onboundary = () => { speakBumpRef.current = Date.now(); };
     // A second known Chrome quirk: speak() sometimes needs a resume() nudge
     // right after, especially on the very first call on a page.
     window.speechSynthesis.speak(utter);
@@ -3519,14 +3576,19 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     rec.maxAlternatives = 1;
     let stoppedByUs = false;
 
-    rec.onstart = () => setListening(true);
+    const setListeningDebounced = (val) => {
+      if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
+      listeningDebounceRef.current = setTimeout(() => setListening(val), 220);
+    };
+
+    rec.onstart = () => setListeningDebounced(true);
     rec.onend = () => {
-      setListening(false);
+      setListeningDebounced(false);
       if (stoppedByUs) return;
       const tryRestart = () => {
         if (stoppedByUs) return;
         if (speakingRef.current || thinkingRef.current) { setTimeout(tryRestart, 300); return; }
-        try { rec.start(); } catch {}
+        setTimeout(() => { try { rec.start(); } catch {} }, 250);
       };
       tryRestart();
     };
@@ -3541,7 +3603,11 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
     recognitionRef.current = rec;
     try { rec.start(); } catch {}
-    return () => { stoppedByUs = true; try { rec.stop(); } catch {} };
+    return () => {
+      stoppedByUs = true;
+      if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
+      try { rec.stop(); } catch {}
+    };
   }, [speechSupported]);
 
   const neoGreen = "#39e673";
@@ -3635,7 +3701,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
           {/* center sphere */}
           <div className="flex flex-col items-center justify-center">
-            <NeoOrb thinking={thinking} speaking={speaking} onClick={orbClick} />
+            <NeoOrb thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} onClick={orbClick} />
             <div className="fs-10 tracking-widest mt-1" style={{ color: textDim, letterSpacing: "3px" }}>
               N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
             </div>
