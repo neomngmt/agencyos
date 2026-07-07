@@ -1614,11 +1614,17 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 .section-head h2 .script-inline{ display:block; font-family:'Playfair Display', serif; font-style:italic; font-weight:700; margin-top:6px; background:linear-gradient(100deg, var(--lp-green-soft), var(--lp-green) 55%, var(--lp-green-dim)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 .section-sub{ color:var(--lp-text-dim); font-size:16px; margin-top:18px; line-height:1.6; }
 
-.connector{ width:1px; height:64px; margin:0 auto 0; position:relative; }
-.connector-line{ position:absolute; inset:0; background:linear-gradient(var(--lp-border), var(--lp-green-dim)); transform-origin:top; transform:scaleY(0); }
-.connector-dot{ position:absolute; top:0%; left:50%; transform:translate(-50%,-50%); width:9px; height:9px; border-radius:50%; background:var(--lp-green); box-shadow:0 0 10px var(--lp-green); opacity:0; }
+.connector{ width:60px; height:240px; margin:0 auto; position:relative; }
+.connector-svg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.connector-path{ fill:none; stroke:url(#connector-grad); stroke-width:1.4; }
+.connector-dot{ position:absolute; top:0; left:50%; transform:translate(-50%,-50%); width:9px; height:9px; border-radius:50%; background:var(--lp-green); box-shadow:0 0 10px var(--lp-green); opacity:0; }
 .connector.desktop-only{ display:none; }
 @media (min-width:861px){ .connector.desktop-only{ display:block; } }
+@media (max-width:860px){ .connector{ display:none; } }
+
+.thread-wrap{ position:relative; }
+.thread-wrap .connector-bg{ position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; margin:0; }
+.thread-wrap .detail-block{ position:relative; z-index:1; }
 
 .panel{ margin-top:0; border:1px solid var(--lp-border); border-radius:16px; background:linear-gradient(180deg, rgba(18,179,76,0.04), transparent 40%), var(--lp-panel); overflow:hidden; }
 
@@ -1676,7 +1682,8 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
   background:linear-gradient(100deg, var(--lp-green-soft), var(--lp-green) 55%, var(--lp-green-dim));
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
-.connector.small{ height:44px; }
+.connector.small{ height:120px; }
+@media (max-width:760px){ .connector.small{ height:80px; } }
 
 /* ---------- detail blocks (the floor) ---------- */
 .detail-block{ display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center; padding:56px 0; }
@@ -1860,6 +1867,15 @@ footer{ border-top:1px solid var(--lp-border); padding:26px 0; text-align:center
 `;
 
 const LANDING_PAGE_BODY = `
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="connector-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" style="stop-color:var(--lp-border)"/>
+      <stop offset="100%" style="stop-color:var(--lp-green-dim)"/>
+    </linearGradient>
+  </defs>
+</svg>
+
 <div class="page-glow" id="pageGlow"></div>
 
 <div class="nav-bar" id="navBar">
@@ -1943,7 +1959,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">Four instruments. One brain. Nothing moves in your agency without it being seen, ranked, and written down.</p>
     </div>
 
-    <div class="connector"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 40 0 L 15 240"/></svg><div class="connector-dot"></div></div>
 
     <div class="panel map-panel" data-reveal>
       <div class="panel-head">
@@ -1981,7 +1997,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">Four numbered instruments, tuned daily. The arrows take you to the floor.</p>
     </div>
 
-    <div class="connector"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 15 0 L 45 240"/></svg><div class="connector-dot"></div></div>
 
     <div class="panel instruments-grid" data-reveal>
       <div class="instrument">
@@ -2039,7 +2055,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">Up close with the four instruments. None of them is decorative.</p>
     </div>
 
-    <div class="connector"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 34 0 L 26 240"/></svg><div class="connector-dot"></div></div>
 
     <div class="detail-block" data-reveal>
       <div class="detail-text">
@@ -2086,54 +2102,53 @@ const LANDING_PAGE_BODY = `
       </div>
     </div>
 
-    <div class="connector small"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="thread-wrap">
+      <div class="connector connector-bg"><svg class="connector-svg" viewBox="0 0 60 100" preserveAspectRatio="none"><path class="connector-path" d="M 18 0 L 42 100"/></svg><div class="connector-dot"></div></div>
 
-    <div class="detail-block reverse" data-reveal>
-      <div class="detail-text">
-        <div class="badge-pill mono">NO. 02 · CONTENT DIRECTOR · IG + X</div>
-        <h3>It reads the feed.<span class="script-inline">You film the winners.</span></h3>
-        <p>The Director studies hundreds of reels across your niche, ranks what's winning right now, and writes the scripts. Hook, shots, caption. On the board every morning, ready to film.</p>
-        <ul class="diamond-list">
-          <li><b>Winners ranked daily</b> from the feeds that matter.</li>
-          <li><b>Finished scripts,</b> not "inspiration." Shot by shot.</li>
-          <li><b>Both platforms.</b> Instagram and X, one board.</li>
-        </ul>
-      </div>
-      <div class="detail-visual">
-        <div class="panel winner-panel tilt-card">
-          <div class="panel-head">
-            <div class="label mono">WINNER BOARD · TODAY</div>
-            <div class="meta mono">212 REELS READ</div>
-          </div>
-          <div class="winner-row">
-            <div class="rank mono">01</div>
-            <div class="thumb"></div>
-            <div class="winner-label">Mirror-check hook · slow zoom reveal<div class="bar"><span style="width:94%"></span></div></div>
-            <div class="score mono">94.2</div>
-          </div>
-          <div class="winner-row">
-            <div class="rank mono">02</div>
-            <div class="thumb"></div>
-            <div class="winner-label">POV caption bait · 3-cut pacing<div class="bar"><span style="width:88%"></span></div></div>
-            <div class="score mono">88.7</div>
-          </div>
-          <div class="winner-row">
-            <div class="rank mono">03</div>
-            <div class="thumb"></div>
-            <div class="winner-label">Outfit transition · trending audio<div class="bar"><span style="width:81%"></span></div></div>
-            <div class="score mono">81.3</div>
-          </div>
-          <div class="winner-stat">
-            <div class="big mono">14</div>
-            <div><div class="lead">scripts written overnight.</div><div class="sub mono">Hook, shots, caption. Point and film.</div></div>
+      <div class="detail-block reverse" data-reveal>
+        <div class="detail-text">
+          <div class="badge-pill mono">NO. 02 · CONTENT DIRECTOR · IG + X</div>
+          <h3>It reads the feed.<span class="script-inline">You film the winners.</span></h3>
+          <p>The Director studies hundreds of reels across your niche, ranks what's winning right now, and writes the scripts. Hook, shots, caption. On the board every morning, ready to film.</p>
+          <ul class="diamond-list">
+            <li><b>Winners ranked daily</b> from the feeds that matter.</li>
+            <li><b>Finished scripts,</b> not "inspiration." Shot by shot.</li>
+            <li><b>Both platforms.</b> Instagram and X, one board.</li>
+          </ul>
+        </div>
+        <div class="detail-visual">
+          <div class="panel winner-panel tilt-card">
+            <div class="panel-head">
+              <div class="label mono">WINNER BOARD · TODAY</div>
+              <div class="meta mono">212 REELS READ</div>
+            </div>
+            <div class="winner-row">
+              <div class="rank mono">01</div>
+              <div class="thumb"></div>
+              <div class="winner-label">Mirror-check hook · slow zoom reveal<div class="bar"><span style="width:94%"></span></div></div>
+              <div class="score mono">94.2</div>
+            </div>
+            <div class="winner-row">
+              <div class="rank mono">02</div>
+              <div class="thumb"></div>
+              <div class="winner-label">POV caption bait · 3-cut pacing<div class="bar"><span style="width:88%"></span></div></div>
+              <div class="score mono">88.7</div>
+            </div>
+            <div class="winner-row">
+              <div class="rank mono">03</div>
+              <div class="thumb"></div>
+              <div class="winner-label">Outfit transition · trending audio<div class="bar"><span style="width:81%"></span></div></div>
+              <div class="score mono">81.3</div>
+            </div>
+            <div class="winner-stat">
+              <div class="big mono">14</div>
+              <div><div class="lead">scripts written overnight.</div><div class="sub mono">Hook, shots, caption. Point and film.</div></div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="connector small"><div class="connector-line"></div><div class="connector-dot"></div></div>
-
-    <div class="detail-block" data-reveal>
+      <div class="detail-block" data-reveal>
       <div class="detail-text">
         <div class="badge-pill mono">NO. 03 · THE LEDGER</div>
         <h3>Revenue that <span class="script-accent">reports to you.</span></h3>
@@ -2159,25 +2174,158 @@ const LANDING_PAGE_BODY = `
           <div class="ledger-row"><div class="who">Lena</div><div class="pct up mono">+9%</div><div class="amt mono">$<span data-count="2167">0</span></div></div>
         </div>
       </div>
+      </div>
     </div>
 
-    <div class="connector small"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector small"><svg class="connector-svg" viewBox="0 0 60 120" preserveAspectRatio="none"><path class="connector-path" d="M 42 0 L 16 120"/></svg><div class="connector-dot"></div></div>
 
     <div class="detail-block reverse" data-reveal>
       <div class="detail-text">
         <div class="badge-pill mono">NO. 04 · VOICE COMMAND</div>
-        <h3>Ask the room.</h3>
+        <h3>Ask Neo.</h3>
         <p>Who posted today. What earned last week. Which script goes next. Ask out loud. It answers from your own data, not the internet's opinion.</p>
         <div class="quote-box">"Scanning 4 accounts. Instagram: 3 of 4 posted. Mia missed. Nudge sent."</div>
       </div>
       <div class="detail-visual">
         <div class="orb-wrap">
           <svg class="orb" viewBox="0 0 200 200">
-            <g fill="none" stroke="var(--green-dim)" stroke-width="1">
-              <ellipse cx="100" cy="100" rx="80" ry="30"/>
-              <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(60 100 100)"/>
-              <ellipse cx="100" cy="100" rx="80" ry="30" transform="rotate(120 100 100)"/>
-              <circle cx="100" cy="100" r="80"/>
+            <g fill="none" stroke="var(--lp-green)" stroke-width="0.6" opacity="0.55">
+              <line x1="168.1" y1="98.9" x2="28.9" y2="102.6"/>
+              <line x1="168.1" y1="98.9" x2="168.4" y2="118.6"/>
+              <line x1="168.1" y1="98.9" x2="41.9" y2="63.3"/>
+              <line x1="168.1" y1="98.9" x2="146.0" y2="156.9"/>
+              <line x1="171.8" y1="109.0" x2="28.8" y2="91.3"/>
+              <line x1="171.8" y1="109.0" x2="157.3" y2="128.6"/>
+              <line x1="171.8" y1="109.0" x2="46.5" y2="55.7"/>
+              <line x1="171.8" y1="109.0" x2="131.1" y2="163.4"/>
+              <line x1="168.4" y1="118.6" x2="30.3" y2="74.1"/>
+              <line x1="168.4" y1="118.6" x2="156.5" y2="141.9"/>
+              <line x1="168.4" y1="118.6" x2="55.5" y2="43.4"/>
+              <line x1="168.4" y1="118.6" x2="124.2" y2="162.1"/>
+              <line x1="157.3" y1="128.6" x2="108.6" y2="157.8"/>
+              <line x1="157.3" y1="128.6" x2="41.9" y2="63.3"/>
+              <line x1="157.3" y1="128.6" x2="146.0" y2="156.9"/>
+              <line x1="157.3" y1="128.6" x2="71.1" y2="43.1"/>
+              <line x1="156.5" y1="141.9" x2="79.8" y2="27.4"/>
+              <line x1="156.5" y1="141.9" x2="91.5" y2="162.2"/>
+              <line x1="156.5" y1="141.9" x2="46.5" y2="55.7"/>
+              <line x1="156.5" y1="141.9" x2="131.1" y2="163.4"/>
+              <line x1="146.0" y1="156.9" x2="91.9" y2="34.3"/>
+              <line x1="146.0" y1="156.9" x2="79.7" y2="161.6"/>
+              <line x1="146.0" y1="156.9" x2="55.5" y2="43.4"/>
+              <line x1="146.0" y1="156.9" x2="124.2" y2="162.1"/>
+              <line x1="131.1" y1="163.4" x2="108.6" y2="157.8"/>
+              <line x1="131.1" y1="163.4" x2="103.2" y2="40.3"/>
+              <line x1="131.1" y1="163.4" x2="72.8" y2="151.5"/>
+              <line x1="131.1" y1="163.4" x2="71.1" y2="43.1"/>
+              <line x1="124.2" y1="162.1" x2="79.8" y2="27.4"/>
+              <line x1="124.2" y1="162.1" x2="91.5" y2="162.2"/>
+              <line x1="124.2" y1="162.1" x2="115.9" y2="37.9"/>
+              <line x1="124.2" y1="162.1" x2="56.0" y2="148.4"/>
+              <line x1="108.6" y1="157.8" x2="91.9" y2="34.3"/>
+              <line x1="108.6" y1="157.8" x2="79.7" y2="161.6"/>
+              <line x1="108.6" y1="157.8" x2="128.5" y2="44.6"/>
+              <line x1="108.6" y1="157.8" x2="46.7" y2="141.1"/>
+              <line x1="91.5" y1="162.2" x2="103.2" y2="40.3"/>
+              <line x1="91.5" y1="162.2" x2="72.8" y2="151.5"/>
+              <line x1="91.5" y1="162.2" x2="142.5" y2="53.6"/>
+              <line x1="91.5" y1="162.2" x2="35.6" y2="131.7"/>
+              <line x1="79.7" y1="161.6" x2="115.9" y2="37.9"/>
+              <line x1="79.7" y1="161.6" x2="56.0" y2="148.4"/>
+              <line x1="79.7" y1="161.6" x2="156.9" y2="50.5"/>
+              <line x1="79.7" y1="161.6" x2="32.3" y2="125.0"/>
+              <line x1="72.8" y1="151.5" x2="31.2" y2="111.2"/>
+              <line x1="72.8" y1="151.5" x2="128.5" y2="44.6"/>
+              <line x1="72.8" y1="151.5" x2="46.7" y2="141.1"/>
+              <line x1="72.8" y1="151.5" x2="160.4" y2="69.6"/>
+              <line x1="56.0" y1="148.4" x2="171.1" y2="71.5"/>
+              <line x1="56.0" y1="148.4" x2="28.9" y2="102.6"/>
+              <line x1="56.0" y1="148.4" x2="142.5" y2="53.6"/>
+              <line x1="56.0" y1="148.4" x2="35.6" y2="131.7"/>
+              <line x1="46.7" y1="141.1" x2="166.7" y2="87.4"/>
+              <line x1="46.7" y1="141.1" x2="28.8" y2="91.3"/>
+              <line x1="46.7" y1="141.1" x2="156.9" y2="50.5"/>
+              <line x1="46.7" y1="141.1" x2="32.3" y2="125.0"/>
+              <line x1="35.6" y1="131.7" x2="31.2" y2="111.2"/>
+              <line x1="35.6" y1="131.7" x2="168.1" y2="98.9"/>
+              <line x1="35.6" y1="131.7" x2="30.3" y2="74.1"/>
+              <line x1="35.6" y1="131.7" x2="160.4" y2="69.6"/>
+              <line x1="32.3" y1="125.0" x2="171.1" y2="71.5"/>
+              <line x1="32.3" y1="125.0" x2="28.9" y2="102.6"/>
+              <line x1="32.3" y1="125.0" x2="41.9" y2="63.3"/>
+              <line x1="32.3" y1="125.0" x2="171.8" y2="109.0"/>
+              <line x1="31.2" y1="111.2" x2="166.7" y2="87.4"/>
+              <line x1="31.2" y1="111.2" x2="28.8" y2="91.3"/>
+              <line x1="31.2" y1="111.2" x2="168.4" y2="118.6"/>
+              <line x1="31.2" y1="111.2" x2="46.5" y2="55.7"/>
+              <line x1="28.9" y1="102.6" x2="168.1" y2="98.9"/>
+              <line x1="28.9" y1="102.6" x2="157.3" y2="128.6"/>
+              <line x1="28.9" y1="102.6" x2="30.3" y2="74.1"/>
+              <line x1="28.9" y1="102.6" x2="55.5" y2="43.4"/>
+              <line x1="28.8" y1="91.3" x2="171.8" y2="109.0"/>
+              <line x1="28.8" y1="91.3" x2="41.9" y2="63.3"/>
+              <line x1="28.8" y1="91.3" x2="156.5" y2="141.9"/>
+              <line x1="28.8" y1="91.3" x2="71.1" y2="43.1"/>
+              <line x1="30.3" y1="74.1" x2="79.8" y2="27.4"/>
+              <line x1="30.3" y1="74.1" x2="168.4" y2="118.6"/>
+              <line x1="30.3" y1="74.1" x2="146.0" y2="156.9"/>
+              <line x1="30.3" y1="74.1" x2="46.5" y2="55.7"/>
+              <line x1="41.9" y1="63.3" x2="91.9" y2="34.3"/>
+              <line x1="41.9" y1="63.3" x2="157.3" y2="128.6"/>
+              <line x1="41.9" y1="63.3" x2="55.5" y2="43.4"/>
+              <line x1="41.9" y1="63.3" x2="131.1" y2="163.4"/>
+              <line x1="46.5" y1="55.7" x2="103.2" y2="40.3"/>
+              <line x1="46.5" y1="55.7" x2="156.5" y2="141.9"/>
+              <line x1="46.5" y1="55.7" x2="124.2" y2="162.1"/>
+              <line x1="46.5" y1="55.7" x2="71.1" y2="43.1"/>
+              <line x1="55.5" y1="43.4" x2="79.8" y2="27.4"/>
+              <line x1="55.5" y1="43.4" x2="108.6" y2="157.8"/>
+              <line x1="55.5" y1="43.4" x2="115.9" y2="37.9"/>
+              <line x1="55.5" y1="43.4" x2="146.0" y2="156.9"/>
+              <line x1="71.1" y1="43.1" x2="91.9" y2="34.3"/>
+              <line x1="71.1" y1="43.1" x2="128.5" y2="44.6"/>
+              <line x1="71.1" y1="43.1" x2="131.1" y2="163.4"/>
+              <line x1="71.1" y1="43.1" x2="91.5" y2="162.2"/>
+              <line x1="79.8" y1="27.4" x2="103.2" y2="40.3"/>
+              <line x1="79.8" y1="27.4" x2="79.7" y2="161.6"/>
+              <line x1="79.8" y1="27.4" x2="142.5" y2="53.6"/>
+              <line x1="79.8" y1="27.4" x2="124.2" y2="162.1"/>
+              <line x1="91.9" y1="34.3" x2="108.6" y2="157.8"/>
+              <line x1="91.9" y1="34.3" x2="72.8" y2="151.5"/>
+              <line x1="91.9" y1="34.3" x2="115.9" y2="37.9"/>
+              <line x1="91.9" y1="34.3" x2="156.9" y2="50.5"/>
+              <line x1="103.2" y1="40.3" x2="91.5" y2="162.2"/>
+              <line x1="103.2" y1="40.3" x2="128.5" y2="44.6"/>
+              <line x1="103.2" y1="40.3" x2="56.0" y2="148.4"/>
+              <line x1="103.2" y1="40.3" x2="160.4" y2="69.6"/>
+              <line x1="115.9" y1="37.9" x2="171.1" y2="71.5"/>
+              <line x1="115.9" y1="37.9" x2="79.7" y2="161.6"/>
+              <line x1="115.9" y1="37.9" x2="46.7" y2="141.1"/>
+              <line x1="115.9" y1="37.9" x2="142.5" y2="53.6"/>
+              <line x1="128.5" y1="44.6" x2="166.7" y2="87.4"/>
+              <line x1="128.5" y1="44.6" x2="72.8" y2="151.5"/>
+              <line x1="128.5" y1="44.6" x2="156.9" y2="50.5"/>
+              <line x1="128.5" y1="44.6" x2="35.6" y2="131.7"/>
+              <line x1="142.5" y1="53.6" x2="168.1" y2="98.9"/>
+              <line x1="142.5" y1="53.6" x2="56.0" y2="148.4"/>
+              <line x1="142.5" y1="53.6" x2="32.3" y2="125.0"/>
+              <line x1="142.5" y1="53.6" x2="160.4" y2="69.6"/>
+              <line x1="156.9" y1="50.5" x2="171.1" y2="71.5"/>
+              <line x1="156.9" y1="50.5" x2="171.8" y2="109.0"/>
+              <line x1="156.9" y1="50.5" x2="46.7" y2="141.1"/>
+              <line x1="156.9" y1="50.5" x2="31.2" y2="111.2"/>
+              <line x1="160.4" y1="69.6" x2="166.7" y2="87.4"/>
+              <line x1="160.4" y1="69.6" x2="168.4" y2="118.6"/>
+              <line x1="160.4" y1="69.6" x2="35.6" y2="131.7"/>
+              <line x1="160.4" y1="69.6" x2="28.9" y2="102.6"/>
+              <line x1="171.1" y1="71.5" x2="168.1" y2="98.9"/>
+              <line x1="171.1" y1="71.5" x2="28.8" y2="91.3"/>
+              <line x1="171.1" y1="71.5" x2="157.3" y2="128.6"/>
+              <line x1="171.1" y1="71.5" x2="32.3" y2="125.0"/>
+              <line x1="166.7" y1="87.4" x2="31.2" y2="111.2"/>
+              <line x1="166.7" y1="87.4" x2="171.8" y2="109.0"/>
+              <line x1="166.7" y1="87.4" x2="30.3" y2="74.1"/>
+              <line x1="166.7" y1="87.4" x2="156.5" y2="141.9"/>
             </g>
           </svg>
         </div>
@@ -2192,7 +2340,7 @@ const LANDING_PAGE_BODY = `
       <div class="tag mono">PROTOCOL</div>
       <h2>Three moves. <span class="script-accent">Then it runs.</span></h2>
     </div>
-    <div class="connector desktop-only"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector desktop-only"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 30 0 L 30 240"/></svg><div class="connector-dot"></div></div>
     <div class="protocol-grid">
       <div class="protocol-card" data-reveal>
         <div class="protocol-no">01</div>
@@ -2221,7 +2369,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">One for the team, one for the roster. Both just need a name and a password.</p>
     </div>
 
-    <div class="connector desktop-only"><div class="connector-line"></div><div class="connector-dot"></div></div>
+    <div class="connector desktop-only"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 42 0 L 18 240"/></svg><div class="connector-dot"></div></div>
     <div class="doors-grid">
       <div class="door-card tilt-card" data-reveal>
         <div class="door-label mono">DOOR 01</div>
@@ -2387,17 +2535,35 @@ function LandingPage({ onSignIn }) {
       });
     }
 
-    // scroll-driven connector line + dot
+    // scroll-driven connector line + dot (diagonal SVG path)
     const connectors = Array.from(root.querySelectorAll(".connector"));
+    const connectorPaths = new Map();
+    connectors.forEach((c) => {
+      const p = c.querySelector(".connector-path");
+      if (p) connectorPaths.set(p, p.getTotalLength());
+    });
     const updateConnectors = () => {
       const trigger = window.innerHeight * 0.82;
       connectors.forEach((c) => {
         const rect = c.getBoundingClientRect();
         const progress = Math.min(1, Math.max(0, (trigger - rect.top) / rect.height));
-        const line = c.querySelector(".connector-line");
+        const path = c.querySelector(".connector-path");
         const dot = c.querySelector(".connector-dot");
-        if (line) line.style.transform = `scaleY(${progress})`;
-        if (dot) { dot.style.top = (progress * 100) + "%"; dot.style.opacity = progress > 0.03 ? "1" : "0"; }
+        if (!path) return;
+        const len = connectorPaths.get(path) || path.getTotalLength();
+        path.style.strokeDasharray = len;
+        path.style.strokeDashoffset = len * (1 - progress);
+        if (dot) {
+          if (progress > 0.02) {
+            const pt = path.getPointAtLength(len * progress);
+            const vb = path.ownerSVGElement.viewBox.baseVal;
+            dot.style.left = (pt.x / vb.width) * 100 + "%";
+            dot.style.top = (pt.y / vb.height) * 100 + "%";
+            dot.style.opacity = "1";
+          } else {
+            dot.style.opacity = "0";
+          }
+        }
       });
     };
     const onScrollConnectors = () => requestAnimationFrame(updateConnectors);
