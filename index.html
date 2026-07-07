@@ -3221,7 +3221,7 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
     // Precompute a mesh: each point connects to its handful of nearest
     // neighbors, forming the dense "plexus ball" look when active. This is
     // O(n^2) but only runs once at setup, not per frame.
-    const K = 3;
+    const K = 6;
     const edges = [];
     const seen = new Set();
     for (let i = 0; i < N; i++) {
@@ -3269,8 +3269,8 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
       pulseRef.current = 0.2 + Math.sin(Date.now() / basePulse) * baseAmp + bump;
 
       // Smoothly grow the orb when active, ease back down when idle.
-      const targetScale = active ? 1.14 : 1;
-      scaleRef.current += (targetScale - scaleRef.current) * 0.08;
+      const targetScale = active ? 1.22 : 1;
+      scaleRef.current += (targetScale - scaleRef.current) * (active ? 0.22 : 0.1);
 
       const r = rotRef.current;
       const pulse = pulseRef.current;
@@ -3300,13 +3300,13 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
 
       // Mesh lines between nearby points — only when active, fading in/out
       // with the same scale/opacity transition as the grow animation.
-      const meshAlpha = Math.max(0, (scale - 1) / 0.14);
+      const meshAlpha = Math.max(0, (scale - 1) / 0.22);
       if (meshAlpha > 0.02) {
-        ctx.lineWidth = 0.6;
+        ctx.lineWidth = 0.7;
         edges.forEach(([i, j]) => {
           const a = proj[i], b = proj[j];
           const depth = ((a.z + b.z) / 2 + 1) / 2;
-          ctx.strokeStyle = `rgba(120,255,160,${(0.06 + depth * 0.22) * meshAlpha})`;
+          ctx.strokeStyle = `rgba(140,255,175,${(0.14 + depth * 0.42) * meshAlpha})`;
           ctx.beginPath();
           ctx.moveTo(cx + a.x * R, cy + a.y * R * 0.98);
           ctx.lineTo(cx + b.x * R, cy + b.y * R * 0.98);
@@ -3446,6 +3446,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
   const listeningDebounceRef = useRef(null);
+  const activeListenRef = useRef(false);
   const thinkingRef = useRef(false);
   const speechSupported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -3473,8 +3474,16 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     window.speechSynthesis.cancel();
     const utter = new window.SpeechSynthesisUtterance(text);
     utter.rate = 1.02;
+    utter.lang = "en-US";
     const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
-    const preferred = voices.find((v) => v.lang?.startsWith("en") && /female|Samantha|Google US English/i.test(v.name)) || voices.find((v) => v.lang?.startsWith("en")) || voices[0];
+    const enVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
+    const malePattern = /male|david|daniel|alex|fred|guy|aaron|arthur|ryan|mark|tom\b/i;
+    const femalePattern = /female|samantha|victoria|karen|zira|susan|allison|ava|moira|tessa/i;
+    const preferred =
+      enVoices.find((v) => malePattern.test(v.name) && !femalePattern.test(v.name)) ||
+      enVoices.find((v) => !femalePattern.test(v.name)) ||
+      enVoices[0] ||
+      voices[0];
     if (preferred) utter.voice = preferred;
     utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
     utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
@@ -3539,15 +3548,10 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   // Clicking the orb: if Neo is currently thinking, cancel it (matches "click
   // the orb to stop"). If idle, start a one-shot listen — no wake word needed,
   // just talk right after clicking.
-  const orbClick = () => {
-    if (thinking) {
-      requestIdRef.current++; // invalidates the in-flight response
-      thinkingRef.current = false;
-      setThinking(false);
-      setMessages((m) => [...m, { role: "neo", text: "(stopped)" }]);
-      return;
-    }
+  const startActiveListen = () => {
     if (!speechSupported) return;
+    activeListenRef.current = true;
+    try { recognitionRef.current?.stop(); } catch {}
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const oneShot = new SR();
     oneShot.lang = "en-US";
@@ -3559,13 +3563,28 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       setHeard(text);
       if (text) send(text);
     };
-    try { oneShot.start(); } catch {}
+    oneShot.onend = () => { activeListenRef.current = false; };
+    oneShot.onerror = () => { activeListenRef.current = false; };
+    try { oneShot.start(); } catch { activeListenRef.current = false; }
   };
 
-  // Always-on listener: runs one recognition "session" at a time (continuous
-  // mode was unreliable — isFinal often never fired on longer sentences).
-  // Each session ends on a natural pause, which reliably finalizes, then we
-  // immediately restart a new session so it's always ready again.
+  const orbClick = () => {
+    if (thinking) {
+      requestIdRef.current++; // invalidates the in-flight response
+      thinkingRef.current = false;
+      setThinking(false);
+      setMessages((m) => [...m, { role: "neo", text: "(stopped)" }]);
+      return;
+    }
+    startActiveListen();
+  };
+
+  // Wake-word listener: always running in the background, but it never sends
+  // anything on its own. It only listens for the word "Neo" — either alone
+  // ("Neo" -> opens a fresh one-shot listen for the actual question) or
+  // combined with the question in one breath ("Neo, how much did Sofia earn"
+  // -> sends everything after "Neo" straight away). Ambient conversation
+  // that never says "Neo" is ignored entirely.
   useEffect(() => {
     if (!speechSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -3575,6 +3594,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     let stoppedByUs = false;
+    const WAKE = /\bneo\b/i;
 
     const setListeningDebounced = (val) => {
       if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
@@ -3587,7 +3607,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       if (stoppedByUs) return;
       const tryRestart = () => {
         if (stoppedByUs) return;
-        if (speakingRef.current || thinkingRef.current) { setTimeout(tryRestart, 300); return; }
+        if (speakingRef.current || thinkingRef.current || activeListenRef.current) { setTimeout(tryRestart, 300); return; }
         setTimeout(() => { try { rec.start(); } catch {} }, 250);
       };
       tryRestart();
@@ -3596,9 +3616,15 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     rec.onresult = (e) => {
       const res = e.results[e.results.length - 1];
       const transcript = res[0].transcript.trim();
-      setHeard(transcript);
       if (!res.isFinal) return;
-      if (transcript) send(transcript);
+      if (!WAKE.test(transcript)) return; // no "Neo" heard — ignore, keep listening quietly
+      const rest = transcript.replace(WAKE, "").replace(/^[\s,.:;-]+/, "").trim();
+      setHeard(transcript);
+      if (rest) {
+        send(rest);
+      } else {
+        startActiveListen();
+      }
     };
 
     recognitionRef.current = rec;
