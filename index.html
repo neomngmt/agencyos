@@ -3584,10 +3584,15 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       setHeard(text);
       if (text) send(text);
     };
-    const stopActive = () => { activeListenRef.current = false; activeOneShotRef.current = null; setActiveListeningDebounced(false); };
-    oneShot.onend = stopActive;
-    oneShot.onerror = stopActive;
-    try { oneShot.start(); } catch { stopActive(); }
+    const stopActive = (reason) => {
+      activeListenRef.current = false;
+      activeOneShotRef.current = null;
+      setActiveListeningDebounced(false);
+      if (reason) setHeard(`(mic stopped: ${reason})`);
+    };
+    oneShot.onend = () => stopActive();
+    oneShot.onerror = (e) => stopActive(e?.error || "unknown error");
+    try { oneShot.start(); } catch (err) { stopActive(err?.message || "failed to start"); }
   };
 
   const orbClick = () => {
@@ -3718,10 +3723,23 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
               {showVoices ? "hide" : "show"} available voices ({voicesRef.current.length})
             </button>
             {showVoices && (
-              <div className="fs-9 mt-1 text-center max-w-md" style={{ color: textDim, maxHeight: "140px", overflowY: "auto" }}>
+              <div className="fs-9 mt-1 text-left max-w-md mx-auto" style={{ color: textDim, maxHeight: "180px", overflowY: "auto" }}>
                 {voicesRef.current.length === 0 && <div>No voices loaded yet — try again in a second.</div>}
                 {voicesRef.current.filter((v) => v.lang?.toLowerCase().startsWith("en")).map((v, i) => (
-                  <div key={i}>{v.name} <span style={{ opacity: 0.6 }}>({v.lang})</span></div>
+                  <div key={i} className="flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => {
+                        window.speechSynthesis.cancel();
+                        const test = new window.SpeechSynthesisUtterance("Hey, I'm Neo. This is how I sound.");
+                        test.voice = v;
+                        test.rate = 0.97;
+                        test.pitch = 0.88;
+                        window.speechSynthesis.speak(test);
+                      }}
+                      style={{ background: "none", border: `1px solid ${border}`, color: neoGreen, borderRadius: "999px", width: "18px", height: "18px", flexShrink: 0, cursor: "pointer", fontSize: "9px", lineHeight: 1 }}
+                    >▶</button>
+                    <span>{v.name} <span style={{ opacity: 0.6 }}>({v.lang})</span></span>
+                  </div>
                 ))}
               </div>
             )}
