@@ -1656,7 +1656,12 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 }
 
 /* ---------- instruments grid ---------- */
-.instruments-grid{ display:grid; grid-template-columns:1fr 1fr; }
+.instruments-grid{ display:grid; grid-template-columns:1fr 1fr; position:relative; }
+.instruments-grid::before{
+  content:""; position:absolute; top:0; left:50%; transform:translate(-50%,-50%);
+  width:11px; height:11px; border-radius:50%; background:var(--lp-panel); border:1.5px solid var(--lp-green);
+  box-shadow:0 0 8px var(--lp-green); z-index:2;
+}
 .instrument{ padding:38px 40px; border-bottom:1px solid var(--lp-border); position:relative; }
 .instrument:nth-child(odd){ border-right:1px solid var(--lp-border); }
 .instrument:nth-child(3), .instrument:nth-child(4){ border-bottom:none; }
@@ -1968,6 +1973,7 @@ const LANDING_PAGE_BODY = `
       </div>
       <div class="map-body">
         <svg class="map-lines" viewBox="0 0 1000 400" preserveAspectRatio="none">
+          <path d="M 500 0 L 340 50" />
           <path d="M 340 50 C 600 50, 650 200, 790 200" />
           <path d="M 340 150 C 600 150, 650 200, 790 200" />
           <path d="M 340 250 C 600 250, 650 200, 790 200" />
