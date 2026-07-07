@@ -1828,9 +1828,11 @@ footer{ border-top:1px solid var(--lp-border); padding:26px 0; text-align:center
 
 .hero{ position:relative; }
 .page-glow{
-  position:fixed; inset:0; pointer-events:none;
-  background:radial-gradient(900px circle at var(--gx,50%) var(--gy,20%), rgba(18,179,76,0.30), transparent 68%);
-  transition:background .2s ease;
+  position:fixed; top:0; left:0; width:900px; height:900px;
+  pointer-events:none; border-radius:50%;
+  background:radial-gradient(circle, rgba(18,179,76,0.30), transparent 68%);
+  transform:translate3d(-450px, -450px, 0);
+  will-change:transform;
 }
 
 .tilt-card{ position:relative; transform-style:preserve-3d; transition:transform .18s ease, box-shadow .18s ease; will-change:transform; }
@@ -2359,18 +2361,26 @@ function LandingPage({ onSignIn }) {
       card.removeEventListener("mouseleave", leave);
     }));
 
-    // ambient cursor glow across the whole page
+    // ambient cursor glow across the whole page (GPU-friendly: transform only, RAF-throttled)
     const pageGlow = root.querySelector("#pageGlow");
-    const onMouseMoveGlow = (e) => {
-      if (!pageGlow) return;
-      const gx = (e.clientX / window.innerWidth) * 100;
-      const gy = (e.clientY / window.innerHeight) * 100;
-      pageGlow.style.setProperty("--gx", gx + "%");
-      pageGlow.style.setProperty("--gy", gy + "%");
-    };
     if (pageGlow) {
+      let glowRaf = null;
+      let glowX = window.innerWidth / 2;
+      let glowY = window.innerHeight * 0.2;
+      const onMouseMoveGlow = (e) => {
+        glowX = e.clientX;
+        glowY = e.clientY;
+        if (glowRaf) return;
+        glowRaf = requestAnimationFrame(() => {
+          pageGlow.style.transform = `translate3d(${glowX - 450}px, ${glowY - 450}px, 0)`;
+          glowRaf = null;
+        });
+      };
       window.addEventListener("mousemove", onMouseMoveGlow, { passive: true });
-      cleanups.push(() => window.removeEventListener("mousemove", onMouseMoveGlow));
+      cleanups.push(() => {
+        window.removeEventListener("mousemove", onMouseMoveGlow);
+        if (glowRaf) cancelAnimationFrame(glowRaf);
+      });
     }
 
     // scroll-driven connector line + dot
