@@ -3204,8 +3204,10 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
     const size = 340;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
-    canvas.style.width = size + "px";
-    canvas.style.height = size + "px";
+    canvas.style.width = "100%";
+    canvas.style.maxWidth = size + "px";
+    canvas.style.height = "auto";
+    canvas.style.aspectRatio = "1 / 1";
     ctx.scale(dpr, dpr);
 
     const N = 420;
@@ -3440,6 +3442,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const [queriesToday, setQueriesToday] = useState(0);
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState("");
+  const [showVoices, setShowVoices] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   const speakBumpRef = useRef(0);
@@ -3473,14 +3476,18 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     // it first is the standard fix for "speak() does nothing, no error."
     window.speechSynthesis.cancel();
     const utter = new window.SpeechSynthesisUtterance(text);
-    utter.rate = 1.02;
+    utter.rate = 0.97;
+    utter.pitch = 0.88;
     utter.lang = "en-US";
     const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
     const enVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
+    const qualityPattern = /natural|enhanced|premium|neural|online/i;
     const malePattern = /male|david|daniel|alex|fred|guy|aaron|arthur|ryan|mark|tom\b/i;
     const femalePattern = /female|samantha|victoria|karen|zira|susan|allison|ava|moira|tessa/i;
     const preferred =
+      enVoices.find((v) => qualityPattern.test(v.name) && malePattern.test(v.name) && !femalePattern.test(v.name)) ||
       enVoices.find((v) => malePattern.test(v.name) && !femalePattern.test(v.name)) ||
+      enVoices.find((v) => qualityPattern.test(v.name) && !femalePattern.test(v.name)) ||
       enVoices.find((v) => !femalePattern.test(v.name)) ||
       enVoices[0] ||
       voices[0];
@@ -3550,12 +3557,24 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   // Clicking the orb: if Neo is currently thinking, cancel it (matches "click
   // the orb to stop"). If idle, start a one-shot listen — no wake word needed,
   // just talk right after clicking.
+  // Click-to-talk. Click once: it listens for what you say and answers.
+  // Click again while it's listening, thinking, or speaking: it stops
+  // whatever it's doing right then. No wake word, no always-on background
+  // listener — the mic is only ever active between a click and the answer.
+  const setActiveListeningDebounced = (val) => {
+    if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
+    listeningDebounceRef.current = setTimeout(() => setListening(val), val ? 0 : 150);
+  };
+
+  const activeOneShotRef = useRef(null);
+
   const startActiveListen = () => {
     if (!speechSupported) return;
     activeListenRef.current = true;
-    try { recognitionRef.current?.stop(); } catch {}
+    setActiveListeningDebounced(true);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const oneShot = new SR();
+    activeOneShotRef.current = oneShot;
     oneShot.lang = "en-US";
     oneShot.continuous = false;
     oneShot.interimResults = false;
@@ -3565,9 +3584,10 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       setHeard(text);
       if (text) send(text);
     };
-    oneShot.onend = () => { activeListenRef.current = false; };
-    oneShot.onerror = () => { activeListenRef.current = false; };
-    try { oneShot.start(); } catch { activeListenRef.current = false; }
+    const stopActive = () => { activeListenRef.current = false; activeOneShotRef.current = null; setActiveListeningDebounced(false); };
+    oneShot.onend = stopActive;
+    oneShot.onerror = stopActive;
+    try { oneShot.start(); } catch { stopActive(); }
   };
 
   const orbClick = () => {
@@ -3582,66 +3602,18 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       window.speechSynthesis.cancel();
       speakingRef.current = false;
       setSpeaking(false);
+      return;
+    }
+    if (activeListenRef.current) {
+      // Already listening — clicking again means "never mind, cancel that."
+      try { activeOneShotRef.current?.stop(); } catch {}
+      activeListenRef.current = false;
+      activeOneShotRef.current = null;
+      setActiveListeningDebounced(false);
+      return;
     }
     startActiveListen();
   };
-
-  // Wake-word listener: always running in the background, but it never sends
-  // anything on its own. It only listens for the word "Neo" — either alone
-  // ("Neo" -> opens a fresh one-shot listen for the actual question) or
-  // combined with the question in one breath ("Neo, how much did Sofia earn"
-  // -> sends everything after "Neo" straight away). Ambient conversation
-  // that never says "Neo" is ignored entirely.
-  useEffect(() => {
-    if (!speechSupported) return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new SR();
-    rec.lang = "en-US";
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    let stoppedByUs = false;
-    const WAKE = /\bneo\b/i;
-
-    const setListeningDebounced = (val) => {
-      if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
-      listeningDebounceRef.current = setTimeout(() => setListening(val), 220);
-    };
-
-    rec.onstart = () => setListeningDebounced(true);
-    rec.onend = () => {
-      setListeningDebounced(false);
-      if (stoppedByUs) return;
-      const tryRestart = () => {
-        if (stoppedByUs) return;
-        if (speakingRef.current || thinkingRef.current || activeListenRef.current) { setTimeout(tryRestart, 300); return; }
-        setTimeout(() => { try { rec.start(); } catch {} }, 250);
-      };
-      tryRestart();
-    };
-    rec.onerror = () => { /* mic denied, or nothing heard — onend will retry */ };
-    rec.onresult = (e) => {
-      const res = e.results[e.results.length - 1];
-      const transcript = res[0].transcript.trim();
-      if (!res.isFinal) return;
-      if (!WAKE.test(transcript)) return; // no "Neo" heard — ignore, keep listening quietly
-      const rest = transcript.replace(WAKE, "").replace(/^[\s,.:;-]+/, "").trim();
-      setHeard(transcript);
-      if (rest) {
-        send(rest);
-      } else {
-        startActiveListen();
-      }
-    };
-
-    recognitionRef.current = rec;
-    try { rec.start(); } catch {}
-    return () => {
-      stoppedByUs = true;
-      if (listeningDebounceRef.current) clearTimeout(listeningDebounceRef.current);
-      try { rec.stop(); } catch {}
-    };
-  }, [speechSupported]);
 
   const neoGreen = "#39e673";
   const textDim = "#6f9a7a";
@@ -3707,10 +3679,10 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       {/* HUD panel */}
       <div className="relative rounded p-5" style={{ border: `1px solid ${border}`, background: `linear-gradient(180deg, rgba(18,179,76,0.04), transparent 40%), ${bgPanel}` }}>
         <div className="fs-10 tracking-widest mb-3" style={{ color: textDim, letterSpacing: "3px" }}>
-          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : "ONLINE"}</b> — {speechSupported ? (listening ? "LISTENING FOR INPUT" : "MIC STANDBY") : "VOICE NEEDS CHROME"}
+          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : speaking ? "SPEAKING" : "ONLINE"}</b> — {speechSupported ? (speaking ? "OUTPUT" : listening ? "LISTENING FOR INPUT" : "STANDBY — CLICK TO TALK") : "VOICE NEEDS CHROME"}
         </div>
 
-        <div className="grid gap-4" style={{ gridTemplateColumns: "220px 1fr 220px" }}>
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_220px] gap-4">
           {/* left telemetry */}
           <div className="fs-11" style={{ color: textDim }}>
             <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(18,179,76,0.12)" }}>
@@ -3739,9 +3711,20 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
               N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
             </div>
             <div className="fs-11 italic mt-2 text-center max-w-xs" style={{ color: neoGreen, opacity: 0.85 }}>
-              {thinking ? "thinking — click the orb to stop." : "click the orb, or just talk, to ask something."}
+              {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
             </div>
             {heard && <div className="fs-10 italic mt-1" style={{ color: neoGreen, opacity: 0.4 }}>heard: "{heard}"</div>}
+            <button onClick={() => setShowVoices((v) => !v)} className="fs-9 mt-2 underline" style={{ color: textDim, background: "none", border: "none", cursor: "pointer" }}>
+              {showVoices ? "hide" : "show"} available voices ({voicesRef.current.length})
+            </button>
+            {showVoices && (
+              <div className="fs-9 mt-1 text-center max-w-md" style={{ color: textDim, maxHeight: "140px", overflowY: "auto" }}>
+                {voicesRef.current.length === 0 && <div>No voices loaded yet — try again in a second.</div>}
+                {voicesRef.current.filter((v) => v.lang?.toLowerCase().startsWith("en")).map((v, i) => (
+                  <div key={i}>{v.name} <span style={{ opacity: 0.6 }}>({v.lang})</span></div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* right radar + waveform */}
