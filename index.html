@@ -3442,7 +3442,6 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const [queriesToday, setQueriesToday] = useState(0);
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState("");
-  const [showVoices, setShowVoices] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   const speakBumpRef = useRef(0);
@@ -3471,35 +3470,50 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
   const speakText = (text) => {
     if (!window.speechSynthesis) return;
-    // Chrome's speech queue can get silently stuck (e.g. after a tab switch,
-    // or if speak() was called again before the last one finished) — clearing
-    // it first is the standard fix for "speak() does nothing, no error."
-    window.speechSynthesis.cancel();
-    const utter = new window.SpeechSynthesisUtterance(text);
-    utter.rate = 0.97;
-    utter.pitch = 0.88;
-    utter.lang = "en-US";
-    const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
-    const enVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
-    const qualityPattern = /natural|enhanced|premium|neural|online/i;
-    const malePattern = /male|david|daniel|alex|fred|guy|aaron|arthur|ryan|mark|tom\b/i;
-    const femalePattern = /female|samantha|victoria|karen|zira|susan|allison|ava|moira|tessa/i;
-    const preferred =
-      enVoices.find((v) => qualityPattern.test(v.name) && malePattern.test(v.name) && !femalePattern.test(v.name)) ||
-      enVoices.find((v) => malePattern.test(v.name) && !femalePattern.test(v.name)) ||
-      enVoices.find((v) => qualityPattern.test(v.name) && !femalePattern.test(v.name)) ||
-      enVoices.find((v) => !femalePattern.test(v.name)) ||
-      enVoices[0] ||
-      voices[0];
-    if (preferred) utter.voice = preferred;
-    utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
-    utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
-    utter.onerror = () => { setSpeaking(false); speakingRef.current = false; };
-    utter.onboundary = () => { speakBumpRef.current = Date.now(); };
-    // A second known Chrome quirk: speak() sometimes needs a resume() nudge
-    // right after, especially on the very first call on a page.
-    window.speechSynthesis.speak(utter);
-    setTimeout(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 50);
+    try {
+      // Chrome's speech queue can get silently stuck (e.g. after a tab switch,
+      // or if speak() was called again before the last one finished) — clearing
+      // it first is the standard fix for "speak() does nothing, no error."
+      window.speechSynthesis.cancel();
+      const utter = new window.SpeechSynthesisUtterance(text);
+      utter.rate = 0.97;
+      utter.pitch = 0.88;
+      utter.lang = "en-US";
+      const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
+      const enVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
+      const qualityPattern = /natural|enhanced|premium|neural|online/i;
+      const malePattern = /male|david|daniel|alex|fred|guy|aaron|arthur|ryan|mark|tom\b/i;
+      const femalePattern = /female|samantha|victoria|karen|zira|susan|allison|ava|moira|tessa/i;
+      const preferred =
+        enVoices.find((v) => v.name === "Google UK English Male") ||
+        enVoices.find((v) => qualityPattern.test(v.name) && malePattern.test(v.name) && !femalePattern.test(v.name)) ||
+        enVoices.find((v) => malePattern.test(v.name) && !femalePattern.test(v.name)) ||
+        enVoices.find((v) => qualityPattern.test(v.name) && !femalePattern.test(v.name)) ||
+        enVoices.find((v) => !femalePattern.test(v.name)) ||
+        enVoices[0] ||
+        voices[0];
+      if (preferred) utter.voice = preferred;
+      utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
+      utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
+      utter.onerror = (e) => {
+        setSpeaking(false);
+        speakingRef.current = false;
+        setHeard(`(voice error: ${e?.error || "unknown"})`);
+      };
+      utter.onboundary = () => { speakBumpRef.current = Date.now(); };
+      // Safari can silently drop speak() if it's called in the very same tick
+      // as cancel() — a tiny delay avoids that race, invisibly.
+      setTimeout(() => {
+        try {
+          window.speechSynthesis.speak(utter);
+          setTimeout(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 50);
+        } catch (err) {
+          setHeard(`(voice error: ${err?.message || "failed to speak"})`);
+        }
+      }, 30);
+    } catch (err) {
+      setHeard(`(voice error: ${err?.message || "failed to speak"})`);
+    }
   };
 
   const send = async (text) => {
@@ -3576,15 +3590,28 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     const oneShot = new SR();
     activeOneShotRef.current = oneShot;
     oneShot.lang = "en-US";
-    oneShot.continuous = false;
-    oneShot.interimResults = false;
+    // continuous + manual stop-on-final, instead of relying on the browser's
+    // own silence detection to end the session — Safari's built-in silence
+    // detection is much shorter/less predictable than Chrome's and can cut
+    // the session before you've finished a sentence.
+    oneShot.continuous = true;
+    oneShot.interimResults = true;
     oneShot.maxAlternatives = 1;
+    let finalized = false;
+    const safety = setTimeout(() => { try { oneShot.stop(); } catch {} }, 12000);
     oneShot.onresult = (e) => {
-      const text = e.results[0][0].transcript.trim();
+      const res = e.results[e.results.length - 1];
+      const text = res[0].transcript.trim();
       setHeard(text);
-      if (text) send(text);
+      if (res.isFinal && text && !finalized) {
+        finalized = true;
+        clearTimeout(safety);
+        send(text);
+        try { oneShot.stop(); } catch {}
+      }
     };
     const stopActive = (reason) => {
+      clearTimeout(safety);
       activeListenRef.current = false;
       activeOneShotRef.current = null;
       setActiveListeningDebounced(false);
@@ -3719,30 +3746,6 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
               {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
             </div>
             {heard && <div className="fs-10 italic mt-1" style={{ color: neoGreen, opacity: 0.4 }}>heard: "{heard}"</div>}
-            <button onClick={() => setShowVoices((v) => !v)} className="fs-9 mt-2 underline" style={{ color: textDim, background: "none", border: "none", cursor: "pointer" }}>
-              {showVoices ? "hide" : "show"} available voices ({voicesRef.current.length})
-            </button>
-            {showVoices && (
-              <div className="fs-9 mt-1 text-left max-w-md mx-auto" style={{ color: textDim, maxHeight: "180px", overflowY: "auto" }}>
-                {voicesRef.current.length === 0 && <div>No voices loaded yet — try again in a second.</div>}
-                {voicesRef.current.filter((v) => v.lang?.toLowerCase().startsWith("en")).map((v, i) => (
-                  <div key={i} className="flex items-center gap-2 py-0.5">
-                    <button
-                      onClick={() => {
-                        window.speechSynthesis.cancel();
-                        const test = new window.SpeechSynthesisUtterance("Hey, I'm Neo. This is how I sound.");
-                        test.voice = v;
-                        test.rate = 0.97;
-                        test.pitch = 0.88;
-                        window.speechSynthesis.speak(test);
-                      }}
-                      style={{ background: "none", border: `1px solid ${border}`, color: neoGreen, borderRadius: "999px", width: "18px", height: "18px", flexShrink: 0, cursor: "pointer", fontSize: "9px", lineHeight: 1 }}
-                    >▶</button>
-                    <span>{v.name} <span style={{ opacity: 0.6 }}>({v.lang})</span></span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* right radar + waveform */}
