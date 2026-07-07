@@ -1859,6 +1859,10 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 .legal-page{ display:none; min-height:100vh; }
 .legal-page.active{ display:block; }
 .legal-wrap{ max-width:760px; padding:60px 24px 100px; }
+.contact-center{ text-align:center; display:flex; flex-direction:column; align-items:center; }
+.contact-center .legal-back{ align-self:flex-start; }
+.contact-center .legal-badge{ margin-left:auto; margin-right:auto; }
+.contact-center .btn-primary{ margin-top:6px; }
 .legal-back{ color:var(--lp-text-dim); text-decoration:none; font-size:13px; display:inline-block; margin-bottom:40px; }
 .legal-back:hover{ color:var(--lp-green); }
 .legal-badge{ display:inline-block; font-size:11px; letter-spacing:1.5px; color:var(--lp-green-soft); border:1px solid var(--lp-border); padding:6px 14px; border-radius:999px; margin-bottom:20px; }
@@ -2534,11 +2538,12 @@ const LANDING_PAGE_BODY = `
 </div>
 
 <div class="legal-page" id="page-contact">
-  <div class="wrap legal-wrap">
+  <div class="wrap legal-wrap contact-center">
     <a href="#" class="legal-back mono">← Back</a>
     <div class="legal-badge mono">CONTACT</div>
     <h1>Get in touch</h1>
-    <p class="legal-intro">This is a private tool built and run by the agency itself. If you're on the roster and something's not working, message the team the way you normally would, not through a support form.</p>
+    <p class="legal-intro">This is a private tool built and run by the agency itself. If you're on the roster and something's not working, reach out directly.</p>
+    <a class="btn-primary" href="https://t.me/neomngmt" target="_blank" rel="noopener">Message on Telegram</a>
   </div>
 </div>
 `;
@@ -3431,7 +3436,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     const myRequestId = ++requestIdRef.current;
     setMessages((m) => [...m, { role: "user", text }]);
     try {
-      const { data, error } = await supabaseClient.functions.invoke("neo-assistant", {
+      const { data, error } = await supabaseClient.functions.invoke("clever-service", {
         body: {
           message: text,
           agency,
