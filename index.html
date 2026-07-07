@@ -3469,7 +3469,8 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       speakText(reply);
     } catch (e) {
       if (myRequestId !== requestIdRef.current) return;
-      setMessages((m) => [...m, { role: "neo", text: "Couldn't reach Neo — check the neo-assistant function and GROQ_API_KEY secret in Supabase." }]);
+      const detail = e?.message || e?.context?.error || (typeof e === "string" ? e : JSON.stringify(e));
+      setMessages((m) => [...m, { role: "neo", text: `Couldn't reach Neo — ${detail || "unknown error"}. Check the clever-service function and GROQ_API_KEY secret in Supabase.` }]);
     } finally {
       if (myRequestId === requestIdRef.current) {
         thinkingRef.current = false;
