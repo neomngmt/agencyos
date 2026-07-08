@@ -152,6 +152,21 @@ const ICON_DATA = {
     ["path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" }],
     ["path", { d: "M10.3 21a1.94 1.94 0 0 0 3.4 0" }],
   ],
+  Search: [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["path", { d: "m21 21-4.3-4.3" }],
+  ],
+  Menu: [
+    ["path", { d: "M4 12h16" }],
+    ["path", { d: "M4 6h16" }],
+    ["path", { d: "M4 18h16" }],
+  ],
+  XLogo: [
+    ["path", { d: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z", fill: "currentColor", stroke: "none" }],
+  ],
+  TikTokLogo: [
+    ["path", { d: "M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64c0 3.33 2.76 5.7 5.69 5.7c3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.31 1.38V7.3s-1.88.09-3.24-1.48z", fill: "currentColor", stroke: "none" }],
+  ],
   Settings: [
     ["path", { d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" }],
     ["circle", { cx: "12", cy: "12", r: "3" }],
@@ -184,7 +199,7 @@ const {
   Plus, X, Clapperboard, Users, ChevronRight, MapPin, Calendar, User,
   Trash2, Loader2, LayoutGrid, Film, UserCircle2, Send, Circle,
   CheckCircle2, Repeat, ChevronLeft, CheckSquare, Lock, LogOut, ShieldCheck,
-  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic, Bell, Settings,
+  TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic, Bell, Settings, Search, XLogo, TikTokLogo, Menu,
 } = Icons;
 
 // ---------------------------------------------------------------------------
@@ -386,8 +401,8 @@ const STAGES = [
 
 const PLATFORMS = [
   { id: "ig", label: "Instagram", icon: "Instagram", color: "#E1306C" },
-  { id: "x", label: "X", icon: "X", color: "#8B93A1" },
-  { id: "tiktok", label: "TikTok", icon: "Flame", color: "#5B8FA8" },
+  { id: "x", label: "X", icon: "XLogo", color: "#8B93A1" },
+  { id: "tiktok", label: "TikTok", icon: "TikTokLogo", color: "#5B8FA8" },
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -714,14 +729,20 @@ function CardDetail({ card, models, restrictModel, onClose, onSave, onDelete }) 
   );
 }
 
-function ContentDirector({ cards, persistCards, models, restrictModel }) {
+function ContentDirector({ cards, persistCards, models, restrictModel, forcedNetwork }) {
   const [detail, setDetail] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newModel, setNewModel] = useState(restrictModel || "");
   const [newPlatform, setNewPlatform] = useState("ig");
   const [filter, setFilter] = useState(restrictModel || "all");
-  const [network, setNetwork] = useState(null); // null = show the platform picker popup first
+  const [network, setNetwork] = useState(forcedNetwork || "all");
+
+  // The sidebar's Content Director arrow lets you jump straight to a
+  // platform (Instagram / TikTok / X) — when that changes, follow it here.
+  useEffect(() => {
+    if (forcedNetwork) setNetwork(forcedNetwork);
+  }, [forcedNetwork]);
 
   const nextSeq = () => (cards.reduce((m, c) => Math.max(m, c.seq || 0), 0) + 1);
 
@@ -749,47 +770,12 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
   };
 
   const byModel = filter === "all" ? cards : cards.filter((c) => c.model === filter);
-  const visible = !network || network === "all" ? byModel : byModel.filter((c) => (c.platform || "ig") === network);
+  const visible = network === "all" ? byModel : byModel.filter((c) => (c.platform || "ig") === network);
   const countFor = (netId) => (netId === "all" ? byModel.length : byModel.filter((c) => (c.platform || "ig") === netId).length);
-
-  // Platform picker: shown first, every time this page is opened, before
-  // any board is visible — clicking a platform below opens that platform's
-  // Content Director. "All" opens the combined view like before.
-  if (!network) {
-    return (
-      <div className="flex items-center justify-center" style={{ minHeight: "60vh" }}>
-        <div className="w-full max-w-md">
-          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-1 text-center">Content Director</div>
-          <div className="text-xl font-extrabold c-text text-center mb-6">Which platform?</div>
-          <div className="space-y-2">
-            {PLATFORMS.map((p) => {
-              const Icon = p.icon === "Instagram" ? Instagram : p.icon === "Flame" ? Flame : X;
-              const count = countFor(p.id);
-              return (
-                <button key={p.id} onClick={() => setNetwork(p.id)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border c-border c-bg-surface hover-bg-accent-a1 transition-colors">
-                  <span className="flex items-center gap-2.5 font-mono fs-13 c-text font-semibold"><Icon size={15} className="c-accent" />{p.label}</span>
-                  <span className="fs-11 font-mono c-faint">{count} scene{count === 1 ? "" : "s"}</span>
-                </button>
-              );
-            })}
-            <button onClick={() => setNetwork("all")}
-              className="w-full text-center px-4 py-2.5 rounded-xl fs-11 font-mono uppercase tracking-wide c-muted hover-bg-surface transition-colors">
-              or see everything at once →
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex gap-5">
       <div className="minw-140 w-140 flex-shrink-0 hidden md:block">
-        <button onClick={() => setNetwork(null)}
-          className="w-full flex items-center gap-1.5 fs-10 font-mono uppercase tracking-wide c-muted hover-bg-surface px-3 py-2 rounded-lg mb-3">
-          <ChevronLeft size={12} /> Switch platform
-        </button>
         <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2 px-1">Network</div>
         <div className="space-y-1">
           <button onClick={() => setNetwork("all")}
@@ -797,7 +783,7 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
             <span>All</span><span className="fs-10 c-faint">{countFor("all")}</span>
           </button>
           {PLATFORMS.map((p) => {
-            const Icon = p.icon === "Instagram" ? Instagram : p.icon === "Flame" ? Flame : X;
+            const Icon = p.icon === "Instagram" ? Instagram : p.icon === "TikTokLogo" ? TikTokLogo : XLogo;
             return (
               <button key={p.id} onClick={() => setNetwork(p.id)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg fs-12 font-mono transition-colors ${network === p.id ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
@@ -812,10 +798,6 @@ function ContentDirector({ cards, persistCards, models, restrictModel }) {
       <div className="flex-1 min-w-0">
       {/* Mobile network selector (no left column on small screens) */}
       <div className="flex items-center gap-1.5 mb-3 md:hidden overflow-x-auto">
-        <button onClick={() => setNetwork(null)}
-          className="fs-10 font-mono uppercase px-2.5 py-1 rounded-lg border c-border c-muted flex-shrink-0">
-          <ChevronLeft size={11} className="inline -mt-0.5" />
-        </button>
         <button onClick={() => setNetwork("all")}
           className={`fs-10 font-mono uppercase px-2.5 py-1 rounded-lg border flex-shrink-0 ${network === "all" ? "c-border-accent c-accent" : "c-border c-muted"}`}>
           All
@@ -3942,7 +3924,7 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
+        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
           {shown.newIdeas.length + shown.newCalendar.length + shown.newTrends.length === 0 && (
             <div className="fs-12 c-faint font-mono italic text-center py-6">You're all caught up.</div>
           )}
@@ -3967,6 +3949,113 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
               <div className="fs-12 c-text">{t.title}</div>
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Team/admin version of the notification bell — flags things that need
+// attention right now (overdue tasks, ideas nobody's picked up) rather than
+// tracking a per-model "seen" timestamp like the creator one does.
+function AdminNotificationBell({ cards, tasks, onNavigate }) {
+  const [open, setOpen] = useState(false);
+  const overdue = tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < todayISO());
+  const stuckIdeas = cards.filter((c) => c.stage === "idea");
+  const total = overdue.length + stuckIdeas.length;
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+        <Bell size={16} />
+        {total > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full c-bg-accent c-onaccent fs-9 font-mono font-bold flex items-center justify-center">
+            {total > 9 ? "9+" : total}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
+          {total === 0 && <div className="fs-12 c-faint font-mono italic text-center py-6">Nothing needs attention.</div>}
+          {overdue.map((t) => (
+            <button key={t.id} onClick={() => { onNavigate("tasks"); setOpen(false); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+              <div className="fs-10 font-mono uppercase" style={{ color: "#E2725B" }}>Overdue</div>
+              <div className="fs-12 c-text">{t.title}{t.model ? ` — ${t.model}` : ""}</div>
+            </button>
+          ))}
+          {stuckIdeas.map((c) => (
+            <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+              <div className="fs-10 font-mono uppercase c-accent">Idea, unclaimed</div>
+              <div className="fs-12 c-text">{c.title || "Untitled scene"}{c.model ? ` — ${c.model}` : ""}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Global search across cards, tasks, models, and trends — click the icon to
+// open a small dropdown search box, results are grouped and clickable.
+function GlobalSearch({ cards, tasks, models, trends, onNavigate, trendsNavId, showModels }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const query = q.trim().toLowerCase();
+  const matchCards = query ? cards.filter((c) => (c.title || "").toLowerCase().includes(query)).slice(0, 5) : [];
+  const matchTasks = query ? tasks.filter((t) => (t.title || "").toLowerCase().includes(query)).slice(0, 5) : [];
+  const matchModels = query && showModels ? models.filter((m) => (m.name || "").toLowerCase().includes(query)).slice(0, 5) : [];
+  const matchTrends = query ? trends.filter((t) => (t.title || "").toLowerCase().includes(query)).slice(0, 5) : [];
+  const totalMatches = matchCards.length + matchTasks.length + matchModels.length + matchTrends.length;
+
+  const go = (view) => { onNavigate(view); setOpen(false); setQ(""); };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((v) => !v)} className="p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+        <Search size={16} />
+      </button>
+      {open && (
+        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-80 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search scenes, tasks, models, trends..."
+            className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent mb-1" />
+          {query && totalMatches === 0 && <div className="fs-12 c-faint font-mono italic text-center py-4">No matches.</div>}
+          <div className="max-h-72 overflow-y-auto">
+            {matchCards.map((c) => (
+              <button key={c.id} onClick={() => go("content")} className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+                <div className="fs-10 font-mono uppercase c-accent">Scene</div>
+                <div className="fs-12 c-text">{c.title}{c.model ? ` — ${c.model}` : ""}</div>
+              </button>
+            ))}
+            {matchTasks.map((t) => (
+              <button key={t.id} onClick={() => go("tasks")} className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+                <div className="fs-10 font-mono uppercase c-success">Task</div>
+                <div className="fs-12 c-text">{t.title}{t.model ? ` — ${t.model}` : ""}</div>
+              </button>
+            ))}
+            {matchModels.map((m) => (
+              <button key={m.name} onClick={() => go("models")} className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+                <div className="fs-10 font-mono uppercase c-accent">Model</div>
+                <div className="fs-12 c-text">{m.name}</div>
+              </button>
+            ))}
+            {matchTrends.map((t) => (
+              <button key={t.id} onClick={() => go(trendsNavId)} className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
+                <div className="fs-10 font-mono uppercase" style={{ color: "#E2725B" }}>Trend</div>
+                <div className="fs-12 c-text">{t.title}</div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -4561,6 +4650,9 @@ function App() {
   const [showLanding, setShowLanding] = useState(true);
   const [view, setView] = useState(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [contentNavOpen, setContentNavOpen] = useState(false);
+  const [contentPlatform, setContentPlatform] = useState(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const loading = cardsLoading || modelsLoading || tasksLoading || settingsLoading || statsLoading || reelsLoading || trendsLoading || integrationsLoading;
 
   if (loading) {
@@ -4647,15 +4739,21 @@ function App() {
     <div className="min-h-screen c-bg-app flex flex-col" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{fontImport}</style>
 
-      {/* Desktop full-width top bar */}
-      <div className="hidden md:flex items-center justify-between px-4 py-3 border-b c-border c-bg-panel flex-shrink-0">
+      {/* Full-width top bar (desktop + mobile — sidebar nav now covers both) */}
+      <div className="flex items-center justify-between px-4 py-3 border-b c-border c-bg-panel flex-shrink-0">
         <div className="flex items-center gap-2">
           <Clapperboard size={18} className="c-accent" />
-          <span className="text-lg font-extrabold tracking-tight c-text">
+          <span className="text-lg font-extrabold tracking-tight c-text hidden sm:inline">
             AGENCY OS
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <GlobalSearch cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks}
+            models={isAdmin ? agencyModels : models} trends={trends} onNavigate={setView}
+            trendsNavId={session.role === "admin" ? "trends" : "trending"} showModels={isAdmin} />
+          {session.role === "admin" && (
+            <AdminNotificationBell cards={scopedCards} tasks={scopedTasks} onNavigate={setView} />
+          )}
           {session.role === "admin" && (
             <button onClick={() => setView("settings")} title="Settings"
               className="p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
@@ -4670,7 +4768,7 @@ function App() {
             <div title={`${session.name} — ${session.agency}`} className="w-7 h-7 rounded-full c-bg-accent c-onaccent flex items-center justify-center fs-12 font-mono font-bold flex-shrink-0">
               {(session.name || "?").slice(0, 1).toUpperCase()}
             </div>
-            <div className="leading-tight">
+            <div className="leading-tight hidden sm:block">
               <div className="fs-12 font-semibold c-text">{session.name}</div>
               <div className="fs-9 font-mono uppercase tracking-wide c-faint">{session.agency} {session.role === "admin" ? "team" : ""}</div>
             </div>
@@ -4683,22 +4781,61 @@ function App() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar */}
-        <aside className="hidden md:flex w-56 border-r c-border c-bg-panel flex-shrink-0 flex-col">
-          <nav className="flex-1 px-2 py-3 space-y-1">
+        {/* Backdrop for the mobile popup menu — tapping it closes the menu */}
+        {mobileNavOpen && (
+          <div className="fixed inset-0 z-40 bg-black/60 sm:hidden" onClick={() => setMobileNavOpen(false)} />
+        )}
+
+        {/* Sidebar — icon-only rail on phones (tap the menu icon to pop out
+            full labels), always full-width from the sm breakpoint up. */}
+        <aside className={`${mobileNavOpen ? "fixed inset-y-0 left-0 z-50 w-56 shadow-2xl" : "w-14 sm:w-56"} flex border-r c-border c-bg-panel flex-shrink-0 flex-col transition-all sm:static sm:z-auto sm:shadow-none`}>
+          <button onClick={() => setMobileNavOpen((v) => !v)}
+            className="sm:hidden flex items-center justify-center p-3 c-muted hover-text-primary flex-shrink-0">
+            {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+          <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
             {NAV.map((n) => {
               const Icon = n.icon;
               const activeNav = currentView === n.id;
+              const labelCls = mobileNavOpen ? "" : "hidden sm:inline";
+              if (n.id === "content") {
+                return (
+                  <div key={n.id}>
+                    <button
+                      onClick={() => { setMobileNavOpen(true); setContentNavOpen((v) => !v); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
+                      <Icon size={15} />
+                      <span className={`flex-1 text-left ${labelCls}`}>{n.label}</span>
+                      <ChevronRight size={13} className={`transition-transform ${labelCls}`} style={{ transform: contentNavOpen ? "rotate(90deg)" : "none" }} />
+                    </button>
+                    {contentNavOpen && (
+                      <div className={`ml-6 mt-1 space-y-0.5 border-l c-border pl-2 ${mobileNavOpen ? "" : "hidden sm:block"}`}>
+                        {PLATFORMS.map((p) => {
+                          const PIcon = p.icon === "Instagram" ? Instagram : p.icon === "TikTokLogo" ? TikTokLogo : XLogo;
+                          const platformActive = activeNav && contentPlatform === p.id;
+                          return (
+                            <button key={p.id}
+                              onClick={() => { setView("content"); setContentPlatform(p.id); setMobileNavOpen(false); }}
+                              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg fs-12 font-mono transition-colors ${platformActive ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
+                              <PIcon size={12} />{p.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               return (
-                <button key={n.id} onClick={() => setView(n.id)}
+                <button key={n.id} onClick={() => { setView(n.id); setMobileNavOpen(false); }}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
                   <Icon size={15} />
-                  {n.label}
+                  <span className={labelCls}>{n.label}</span>
                 </button>
               );
             })}
           </nav>
-          <div className="px-4 py-3 border-t c-border">
+          <div className="px-4 py-3 border-t c-border hidden sm:block">
             <div className="flex items-center gap-2">
               <Circle size={7} fill="#39e673" color="#39e673" className="anim-pulse-dot" />
               <span className="fs-10 font-mono uppercase tracking-widest c-muted">All systems online</span>
@@ -4707,34 +4844,7 @@ function App() {
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Mobile top bar */}
-          <div className="md:hidden flex items-center justify-between px-4 py-3 border-b c-border c-bg-panel sticky top-0 z-30">
-            <div className="flex items-center gap-2">
-              <Clapperboard size={17} className="c-accent" />
-              <span className="text-lg font-extrabold tracking-tight c-text">
-                AGENCY OS
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {session.role === "admin" && (
-                <button onClick={() => setView("settings")} title="Settings" className="c-muted p-1.5" aria-label="Settings">
-                  <Settings size={16} />
-                </button>
-              )}
-              {session.role === "creator" && (
-                <NotificationBell model={models.find((m) => m.name === session.name)} cards={cards} tasks={tasks} trends={trends}
-                  agency={session.agency} models={models} persistModels={persistModels} onNavigate={setView} />
-              )}
-              <div className="w-6 h-6 rounded-full c-bg-accent c-onaccent flex items-center justify-center fs-11 font-mono font-bold">
-                {(session.name || "?").slice(0, 1).toUpperCase()}
-              </div>
-              <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }} className="c-muted p-1.5" aria-label="Sign out">
-                <LogOut size={17} />
-              </button>
-            </div>
-          </div>
-
-          <main key={currentView} className="flex-1 px-4 md:px-6 py-4 md:py-6 overflow-x-hidden pb-24 md:pb-6 anim-view">
+          <main key={currentView} className="flex-1 px-4 md:px-6 py-4 md:py-6 overflow-x-hidden pb-6 anim-view">
             {currentView !== "neo" && (
               <div className="mb-5 md:mb-6">
                 <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight c-text">
@@ -4746,7 +4856,7 @@ function App() {
             {currentView === "dashboard" && (session.role === "admin"
               ? <Dashboard cards={scopedCards} models={agencyModels} stats={scopedStats} reels={scopedReels} onNavigate={setView} />
               : <CreatorDashboard stats={stats} tasks={tasks} restrictModel={restrictModel} onNavigate={setView} bufferDailyStats={bufferDailyStats} />)}
-            {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
+            {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} forcedNetwork={contentPlatform} />}
             {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
@@ -4761,20 +4871,6 @@ function App() {
         </div>
       </div>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 c-bg-panel border-t c-border flex overflow-x-auto">
-        {NAV.map((n) => {
-          const Icon = n.icon;
-          const activeNav = currentView === n.id;
-          return (
-            <button key={n.id} onClick={() => setView(n.id)}
-              className={`flex-1 minw-64 flex flex-col items-center gap-1 py-2.5 ${activeNav ? "c-accent" : "c-muted"}`}>
-              <Icon size={17} />
-              <span className="fs-9 font-mono uppercase tracking-wide leading-none text-center px-0.5">{n.label}</span>
-            </button>
-          );
-        })}
-      </nav>
     </div>
   );
 }
