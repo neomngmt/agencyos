@@ -509,37 +509,203 @@ button.c-bg-accent.rounded-xl,
 
 // ---------- storage hooks ----------
 
-function usePersisted(key, fallback, shared = true) {
+// Generic hook for array-shaped tables (cards, tasks, stats, reels, trends,
+// integrations, models). Reads the whole table on load; on persist(next),
+// upserts every row in `next` and deletes whatever existed before but isn't
+// in `next` anymore — so the UI's "replace the whole array" style keeps
+// working exactly like it did with the old (broken) storage.
+function useSupaTable(table, idField, fallback, toJS, toDB) {
   const [value, setValue] = useState(fallback);
   const [loading, setLoading] = useState(true);
+  const prevIdsRef = useRef(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabaseClient.from("app_state").select("value").eq("key", key).maybeSingle();
+      const { data, error } = await supabaseClient.from(table).select("*");
       if (error) throw error;
-      setValue(data ? data.value : fallback);
+      const mapped = (data || []).map(toJS);
+      prevIdsRef.current = new Set(mapped.map((r) => r[idField]));
+      setValue(mapped.length ? mapped : fallback);
     } catch (e) {
-      console.error("load failed for " + key, e);
+      console.error("load failed for " + table, e);
       setValue(fallback);
     }
     setLoading(false);
-  }, [key]);
+  }, [table]);
 
   useEffect(() => { load(); }, [load]);
 
   const persist = async (next) => {
     setValue(next);
     try {
-      const { error } = await supabaseClient.from("app_state").upsert({ key, value: next, updated_at: new Date().toISOString() });
-      if (error) throw error;
+      const nextIds = new Set(next.map((r) => r[idField]));
+      const removed = [...prevIdsRef.current].filter((id) => !nextIds.has(id));
+      if (next.length) {
+        const { error } = await supabaseClient.from(table).upsert(next.map(toDB), { onConflict: idField });
+        if (error) throw error;
+      }
+      if (removed.length) {
+        const { error } = await supabaseClient.from(table).delete().in(idField, removed);
+        if (error) throw error;
+      }
+      prevIdsRef.current = nextIds;
     } catch (e) {
-      console.error("save failed for " + key, e);
+      console.error("save failed for " + table, e);
     }
   };
 
   return { value, loading, persist };
 }
+
+// settings is a single fixed row (id = 1), not an array.
+function useSupaSettings(fallback) {
+  const [value, setValue] = useState(fallback);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabaseClient.from("settings").select("*").eq("id", 1).maybeSingle();
+      if (error) throw error;
+      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS } : fallback);
+    } catch (e) {
+      console.error("load failed for settings", e);
+      setValue(fallback);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const persist = async (next) => {
+    setValue(next);
+    try {
+      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS });
+      if (error) throw error;
+    } catch (e) {
+      console.error("save failed for settings", e);
+    }
+  };
+
+  return { value, loading, persist };
+}
+
+// buffer_daily_stats is populated by the Buffer-sync Edge Function on a
+// schedule — the frontend only ever reads it, never writes.
+function useSupaBufferStats() {
+  const [value, setValue] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabaseClient.from("buffer_daily_stats").select("*");
+        if (error) throw error;
+        setValue((data || []).map((r) => ({
+          id: r.id, model: r.model, channelId: r.channel_id, statDate: r.stat_date,
+          postCount: r.post_count, reactions: r.reactions, comments: r.comments, reposts: r.reposts,
+          impressions: r.impressions, clicks: r.clicks, engagementRate: r.engagement_rate,
+          syncedAt: r.synced_at, platform: r.platform,
+        })));
+      } catch (e) {
+        console.error("load failed for buffer_daily_stats", e);
+        setValue([]);
+      }
+      setLoading(false);
+    })();
+  }, []);
+  return { value, loading };
+}
+
+// ---- per-table field mapping (JS camelCase <-> Postgres snake_case) ----
+
+const modelsToJS = (r) => ({
+  name: r.name, note: r.note || "", pin: r.pin || "", onboarded: !!r.onboarded,
+  agency: r.agency || "CZ", addedAt: r.added_at ? new Date(r.added_at).getTime() : Date.now(),
+  igHandle: r.ig_handle || "", xHandle: r.x_handle || "", tiktokHandle: r.tiktok_handle || "",
+  ofUrl: r.of_url || "", driveUrl: r.drive_url || "", bio: r.bio || "",
+  bioReceivedAt: r.bio_received_at ? new Date(r.bio_received_at).getTime() : null,
+  alwaysOnboard: !!r.always_onboard,
+  bufferChannelId: r.buffer_channel_id || "", bufferChannelIdIg: r.buffer_channel_id_ig || "",
+  bufferChannelIdX: r.buffer_channel_id_x || "", bufferChannelIdTiktok: r.buffer_channel_id_tiktok || "",
+  bufferChannelIdFb: r.buffer_channel_id_fb || "",
+});
+const modelsToDB = (m) => ({
+  name: m.name, note: m.note || "", pin: m.pin || "", onboarded: !!m.onboarded,
+  agency: m.agency || "CZ", added_at: m.addedAt ? new Date(m.addedAt).toISOString() : new Date().toISOString(),
+  ig_handle: m.igHandle || "", x_handle: m.xHandle || "", tiktok_handle: m.tiktokHandle || "",
+  of_url: m.ofUrl || "", drive_url: m.driveUrl || "", bio: m.bio || "",
+  bio_received_at: m.bioReceivedAt ? new Date(m.bioReceivedAt).toISOString() : null,
+  always_onboard: !!m.alwaysOnboard,
+  buffer_channel_id: m.bufferChannelId || "", buffer_channel_id_ig: m.bufferChannelIdIg || "",
+  buffer_channel_id_x: m.bufferChannelIdX || "", buffer_channel_id_tiktok: m.bufferChannelIdTiktok || "",
+  buffer_channel_id_fb: m.bufferChannelIdFb || "",
+});
+
+const cardsToJS = (r) => ({
+  id: r.id, seq: r.seq, title: r.title, model: r.model, sceneType: r.scene_type || "",
+  platform: r.platform || "ig", location: r.location || "", deadline: r.deadline || "",
+  assignee: r.assignee || "", scriptLink: r.script_link || "", notes: r.notes || "",
+  stage: r.stage || "idea", source: r.source || "team",
+  createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+});
+const cardsToDB = (c) => ({
+  id: c.id, seq: c.seq, title: c.title, model: c.model, scene_type: c.sceneType || "",
+  platform: c.platform || "ig", location: c.location || "", deadline: c.deadline || null,
+  assignee: c.assignee || "", script_link: c.scriptLink || "", notes: c.notes || "",
+  stage: c.stage || "idea", source: c.source || "team",
+  created_at: c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
+});
+
+const tasksToJS = (r) => ({
+  id: r.id, seq: r.seq, title: r.title, model: r.model, dueDate: r.due_date || "",
+  recurring: !!r.recurring, status: r.status || "todo", notes: r.notes || "",
+  assignee: r.assignee || "", createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+});
+const tasksToDB = (t) => ({
+  id: t.id, seq: t.seq, title: t.title, model: t.model, due_date: t.dueDate || null,
+  recurring: !!t.recurring, status: t.status || "todo", notes: t.notes || "",
+  assignee: t.assignee || "", created_at: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
+});
+
+const statsToJS = (r) => ({
+  id: r.id, model: r.model, weekOf: r.week_of || "", ofEarnings: r.of_earnings || 0,
+  ofSubs: r.of_subs || 0, igFollowers: r.ig_followers || 0, igReach: r.ig_reach || 0,
+  createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+  earningsGoal: r.earnings_goal || 0,
+});
+const statsToDB = (s) => ({
+  id: s.id, model: s.model, week_of: s.weekOf || null, of_earnings: s.ofEarnings || 0,
+  of_subs: s.ofSubs || 0, ig_followers: s.igFollowers || 0, ig_reach: s.igReach || 0,
+  created_at: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
+  earnings_goal: s.earningsGoal || 0,
+});
+
+const reelsToJS = (r) => ({
+  id: r.id, model: r.model, weekOf: r.week_of || "", title: r.title || "", link: r.link || "",
+  views: r.views || 0, likes: r.likes || 0, shares: r.shares || 0, comments: r.comments || 0,
+  createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+});
+const reelsToDB = (r) => ({
+  id: r.id, model: r.model, week_of: r.weekOf || null, title: r.title || "", link: r.link || "",
+  views: r.views || 0, likes: r.likes || 0, shares: r.shares || 0, comments: r.comments || 0,
+  created_at: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
+});
+
+const trendsToJS = (r) => ({
+  id: r.id, showCZ: !!r.show_cz, showUS: !!r.show_us, category: r.category || "",
+  title: r.title || "", description: r.description || "", link: r.link || "",
+  weekOf: r.week_of || "", createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+});
+const trendsToDB = (t) => ({
+  id: t.id, show_cz: !!t.showCZ, show_us: !!t.showUS, category: t.category || "",
+  title: t.title || "", description: t.description || "", link: t.link || "",
+  week_of: t.weekOf || null, created_at: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
+});
+
+const integrationsToJS = (r) => ({ id: r.id, name: r.name, status: r.status, note: r.note || "", help: r.help || "", agency: r.agency });
+const integrationsToDB = (i) => ({ id: i.id, name: i.name, status: i.status, note: i.note || "", help: i.help || "", agency: i.agency });
 
 // ---------- shared bits ----------
 
@@ -4640,21 +4806,21 @@ function clearSavedSession() {
 }
 
 function App() {
-  const { value: cards, loading: cardsLoading, persist: persistCards } = usePersisted("pipeline:cards", []);
-  const { value: models, loading: modelsLoading, persist: persistModels } = usePersisted("pipeline:models", [
+  const { value: cards, loading: cardsLoading, persist: persistCards } = useSupaTable("cards", "id", [], cardsToJS, cardsToDB);
+  const { value: models, loading: modelsLoading, persist: persistModels } = useSupaTable("models", "name", [
     { name: "Anna", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
     { name: "Vivien", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
     { name: "Kuro", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
     { name: "Lucie", note: "", pin: "", onboarded: false, agency: "CZ", addedAt: Date.now() },
     { name: "model", note: "Testing account", pin: "model", onboarded: false, alwaysOnboard: true, agency: "CZ", addedAt: Date.now() },
-  ]);
-  const { value: tasks, loading: tasksLoading, persist: persistTasks } = usePersisted("pipeline:tasks", []);
-  const { value: stats, loading: statsLoading, persist: persistStats } = usePersisted("pipeline:stats", []);
-  const { value: reels, loading: reelsLoading, persist: persistReels } = usePersisted("pipeline:reels", []);
-  const { value: trends, loading: trendsLoading, persist: persistTrends } = usePersisted("pipeline:trends", []);
-  const { value: bufferDailyStats, loading: bufferDailyStatsLoading } = usePersisted("pipeline:bufferDailyStats", []);
-  const { value: settings, loading: settingsLoading, persist: persistSettings } = usePersisted("pipeline:settings", { adminPinCZ: "2748", adminPinUS: "1234" });
-  const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = usePersisted("pipeline:integrations", DEFAULT_INTEGRATIONS);
+  ], modelsToJS, modelsToDB);
+  const { value: tasks, loading: tasksLoading, persist: persistTasks } = useSupaTable("tasks", "id", [], tasksToJS, tasksToDB);
+  const { value: stats, loading: statsLoading, persist: persistStats } = useSupaTable("stats", "id", [], statsToJS, statsToDB);
+  const { value: reels, loading: reelsLoading, persist: persistReels } = useSupaTable("reels", "id", [], reelsToJS, reelsToDB);
+  const { value: trends, loading: trendsLoading, persist: persistTrends } = useSupaTable("trends", "id", [], trendsToJS, trendsToDB);
+  const { value: bufferDailyStats, loading: bufferDailyStatsLoading } = useSupaBufferStats();
+  const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234" });
+  const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
   const [showLanding, setShowLanding] = useState(true);
   const [view, setView] = useState(null);
