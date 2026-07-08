@@ -4744,9 +4744,12 @@ function CreatorDashboard({ stats, tasks, restrictModel, onNavigate, bufferDaily
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const monthStr = todayStr.slice(0, 7);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
   const myOfRows = (ofDailyStats || []).filter((r) => r.model === restrictModel);
   const sumOf = (rows, field) => rows.reduce((t, r) => t + (r[field] || 0), 0);
-  const ofToday = myOfRows.filter((r) => r.statDate === todayStr);
+  const ofYesterday = myOfRows.filter((r) => r.statDate === yesterdayStr);
   const ofWeek = myOfRows.filter((r) => r.statDate >= sevenDaysAgoStr);
   const ofMonth = myOfRows.filter((r) => r.statDate && r.statDate.slice(0, 7) === monthStr);
   const hasOfData = myOfRows.length > 0;
@@ -4757,7 +4760,7 @@ function CreatorDashboard({ stats, tasks, restrictModel, onNavigate, bufferDaily
 
   const ofSection = (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-      {[["Today", ofToday], ["Last 7 days", ofWeek], ["This month", ofMonth]].map(([label, rows]) => (
+      {[["Yesterday", ofYesterday], ["Last 7 days", ofWeek], ["This month", ofMonth]].map(([label, rows]) => (
         <div key={label} className="c-bg-surface border c-border rounded-xl px-4 py-3.5 hover-lift">
           <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">{label} — OnlyFans</div>
           <div className="text-xl font-semibold c-accent mb-2"><CountUp value={sumOf(rows, "earnings")} prefix="$" /></div>
@@ -4811,8 +4814,7 @@ function CreatorDashboard({ stats, tasks, restrictModel, onNavigate, bufferDaily
       <div>
         <ThisWeeksAsks tasks={tasks} restrictModel={restrictModel} onNavigate={onNavigate} />
         {ofSection}
-        {ofSection}
-      {bufferSection}
+        {bufferSection}
         <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
           No stats yet. Ask your manager to add this week's numbers.
         </div>
