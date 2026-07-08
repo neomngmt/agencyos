@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Agency OS</title>
+<title>Zion OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700&display=swap" rel="stylesheet">
@@ -1221,21 +1221,6 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1 flex items-center gap-1"><Instagram size={11} /> Instagram</label>
-            <input value={form.igHandle || ""} onChange={(e) => set("igHandle", e.target.value)} placeholder="@handle or full link"
-              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
-          </div>
-          <div>
-            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">X / Twitter</label>
-            <input value={form.xHandle || ""} onChange={(e) => set("xHandle", e.target.value)} placeholder="@handle or full link"
-              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
-          </div>
-          <div>
-            <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">TikTok</label>
-            <input value={form.tiktokHandle || ""} onChange={(e) => set("tiktokHandle", e.target.value)} placeholder="@handle or full link"
-              className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
-          </div>
-          <div>
             <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Google Drive folder</label>
             <input value={form.driveUrl || ""} onChange={(e) => set("driveUrl", e.target.value)} placeholder="https://drive.google.com/..."
               className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
@@ -1263,7 +1248,6 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
         </div>
 
         <div className="flex gap-3 mb-4 fs-11 font-mono">
-          {form.igHandle && <a href={form.igHandle.startsWith("http") ? form.igHandle : `https://instagram.com/${form.igHandle.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="c-accent hover-accent-text flex items-center gap-1"><Instagram size={12} />Open IG →</a>}
           {form.driveUrl && <a href={form.driveUrl} target="_blank" rel="noopener noreferrer" className="c-accent hover-accent-text">Open Drive →</a>}
         </div>
 
@@ -2211,7 +2195,7 @@ const LANDING_PAGE_BODY = `
             <defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#a8ffce"/><stop offset="1" stop-color="#39ffa0"/></linearGradient></defs>
           </svg>
         </span>
-        AGENCY OS
+        ZION OS
       </div>
       <div class="links">
         <a href="#system">The System</a>
@@ -2226,7 +2210,7 @@ const LANDING_PAGE_BODY = `
 
 <div class="wrap">
   <div class="hero">
-    <div class="eyebrow mono">AGENCY OS · THE CREATOR COMMAND ROOM</div>
+    <div class="eyebrow mono">ZION OS · THE CREATOR COMMAND ROOM</div>
     <h1>Run the whole roster<span class="script">from one board.</span></h1>
     <p>The pipeline, the earnings, and the trends worth copying. One system watches all of it, syncs the numbers on its own, and answers out loud when you ask it something.</p>
     <div class="hero-ctas">
@@ -2238,7 +2222,7 @@ const LANDING_PAGE_BODY = `
 
   <div class="floor" data-reveal>
     <div class="floor-head">
-      <div class="label mono">AGENCY OS · LIVE FLOOR</div>
+      <div class="label mono">ZION OS · LIVE FLOOR</div>
       <div class="live mono"><span class="dot"></span>ALL SYSTEMS WATCHING</div>
     </div>
     <div class="floor-grid">
@@ -2715,7 +2699,7 @@ const LANDING_PAGE_BODY = `
 </div>
 
 <footer class="site-footer mono">
-  <div class="footer-brand"><span class="footer-mark">◈</span> AGENCY OS · THE CREATOR COMMAND ROOM</div>
+  <div class="footer-brand"><span class="footer-mark">◈</span> ZION OS · THE CREATOR COMMAND ROOM</div>
   <div class="footer-links">
     <a href="#" data-page="privacy">Privacy</a>
     <a href="#" data-page="terms">Terms</a>
@@ -2734,7 +2718,7 @@ const LANDING_PAGE_BODY = `
     <div class="legal-badge mono">LEGAL</div>
     <h1>Privacy Policy</h1>
     <div class="legal-date mono">Effective January 12, 2026</div>
-    <p class="legal-intro">Agency OS ("we", "us") is a private, invite-only tool built to run one agency's roster. This page explains what data it stores, why, and how long it keeps it. It is not sold or shared with advertisers.</p>
+    <p class="legal-intro">Zion OS ("we", "us") is a private, invite-only tool built to run one agency's roster. This page explains what data it stores, why, and how long it keeps it. It is not sold or shared with advertisers.</p>
 
     <h2>1. Data we store</h2>
     <p>Only what's needed to run the board:</p>
@@ -2761,10 +2745,10 @@ const LANDING_PAGE_BODY = `
     <div class="legal-badge mono">LEGAL</div>
     <h1>Terms of Service</h1>
     <div class="legal-date mono">Effective January 12, 2026</div>
-    <p class="legal-intro">These terms govern access to and use of Agency OS. By signing in, you agree to them.</p>
+    <p class="legal-intro">These terms govern access to and use of Zion OS. By signing in, you agree to them.</p>
 
     <h2>1. The service</h2>
-    <p>Agency OS is an internal operations tool for one agency: content pipeline, model roster, revenue ledger, and Neo, an assistant that answers from your own data. Features may be added, changed, or removed at any time.</p>
+    <p>Zion OS is an internal operations tool for one agency: content pipeline, model roster, revenue ledger, and Neo, an assistant that answers from your own data. Features may be added, changed, or removed at any time.</p>
 
     <h2>2. Accounts</h2>
     <p>Team members sign in with a PIN set per agency. Each creator signs in with her own name and sets a password the first time she logs in. Credentials are personal; sharing a login between people isn't allowed.</p>
@@ -2778,7 +2762,7 @@ const LANDING_PAGE_BODY = `
   <div class="wrap legal-wrap">
     <a href="#" class="legal-back mono">← Back</a>
     <div class="legal-badge mono">STATUS</div>
-    <h1>Agency OS Status</h1>
+    <h1>Zion OS Status</h1>
     <p class="legal-intro">Health of the platform, updated by hand when something changes.</p>
 
     <div class="status-banner">
@@ -3069,7 +3053,7 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
       <div className="w-full max-w-sm anim-card-in">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Clapperboard size={22} className="c-accent" />
-          <span className="text-2xl font-extrabold tracking-tight c-text">AGENCY OS</span>
+          <span className="text-2xl font-extrabold tracking-tight c-text">ZION OS</span>
         </div>
 
         <div className="flex gap-1.5 c-bg-surface border c-border rounded-lg p-1 mb-5">
@@ -4060,7 +4044,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       {/* mini topbar */}
       <div className="flex items-center justify-between pb-3 mb-5" style={{ borderBottom: `1px solid ${border}` }}>
         <div className="font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88`, fontSize: "20px" }}>
-          NEO <span style={{ color: textDim, fontWeight: 400 }}>// AGENCY OS INTELLIGENCE SYSTEM</span>
+          NEO <span style={{ color: textDim, fontWeight: 400 }}>// ZION OS INTELLIGENCE SYSTEM</span>
         </div>
         <NeoClock />
       </div>
@@ -4936,10 +4920,11 @@ function OnboardingScreen({ name, url, onContinue, onQuestionnaireReceived }) {
 
 // ---------- trend scraper ----------
 
-function TrendScraper({ models, persistModels }) {
+function TrendScraper({ models, persistModels, restrictModel }) {
+  const scopedModels = restrictModel ? models.filter(m => m.name === restrictModel) : models;
   const [apifyKey, setApifyKey] = React.useState(() => { try { return localStorage.getItem("apify_key_v1") || ""; } catch { return ""; } });
   const [showKey, setShowKey] = React.useState(false);
-  const [selectedModel, setSelectedModel] = React.useState(models[0]?.name || "");
+  const [selectedModel, setSelectedModel] = React.useState(restrictModel || models[0]?.name || "");
   const [scraping, setScraping] = React.useState(false);
   const [results, setResults] = React.useState([]);
   const [profileCount, setProfileCount] = React.useState(0);
@@ -4947,7 +4932,7 @@ function TrendScraper({ models, persistModels }) {
   const [threshold, setThreshold] = React.useState(1.5);
   const [addingHandle, setAddingHandle] = React.useState("");
 
-  const model = models.find(m => m.name === selectedModel);
+  const model = scopedModels.find(m => m.name === selectedModel);
   const inspoProfiles = model?.inspoProfiles || [];
 
   const saveKey = (k) => { setApifyKey(k); try { localStorage.setItem("apify_key_v1", k); } catch {} };
@@ -5023,15 +5008,19 @@ function TrendScraper({ models, persistModels }) {
       </div>
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="w-full lg:w-64 flex-shrink-0">
-          <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Modelka</div>
-          <div className="flex flex-col gap-1 mb-4">
-            {models.map(m => (
-              <button key={m.name} onClick={() => { setSelectedModel(m.name); setResults([]); setError(""); }}
-                className={`w-full text-left px-3 py-2 rounded-lg fs-12 font-mono transition-colors ${selectedModel === m.name ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
-                {m.name}{m.inspoProfiles?.length > 0 && <span className="ml-2 fs-10 c-faint">({m.inspoProfiles.length})</span>}
-              </button>
-            ))}
-          </div>
+          {!restrictModel && (
+            <>
+              <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Modelka</div>
+              <div className="flex flex-col gap-1 mb-4">
+                {scopedModels.map(m => (
+                  <button key={m.name} onClick={() => { setSelectedModel(m.name); setResults([]); setError(""); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg fs-12 font-mono transition-colors ${selectedModel === m.name ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
+                    {m.name}{m.inspoProfiles?.length > 0 && <span className="ml-2 fs-10 c-faint">({m.inspoProfiles.length})</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {selectedModel && (
             <div className="c-bg-surface border c-border rounded-xl p-3">
               <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Inspo profily</div>
@@ -5114,7 +5103,7 @@ const NAV_CREATOR = [
   { id: "content", label: "My Scenes", icon: Film },
   { id: "calendar", label: "My Calendar", icon: Calendar },
   { id: "tasks", label: "My Tasks", icon: CheckSquare },
-  { id: "trending", label: "Trending", icon: Flame },
+  { id: "viral", label: "Viral Feed", icon: Zap },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -5273,7 +5262,7 @@ function App() {
         <div className="flex items-center gap-2">
           <Clapperboard size={18} className="c-accent" />
           <span className="text-lg font-extrabold tracking-tight c-text hidden sm:inline">
-            AGENCY OS
+            ZION OS
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -5389,7 +5378,9 @@ function App() {
             {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
-            {currentView === "viral" && <TrendScraper models={agencyModels} persistModels={scopedPersistModels} />}
+            {currentView === "viral" && (isAdmin
+              ? <TrendScraper models={agencyModels} persistModels={scopedPersistModels} />
+              : <TrendScraper models={models} persistModels={persistModels} restrictModel={restrictModel} />)}
             {currentView === "neo" && <NeoPage agency={session.agency} session={session} onNavigate={setView}
               onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
               cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} />}
