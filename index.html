@@ -479,10 +479,14 @@ const fontImport = `
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes softPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes cardIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes shakeX { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px); } 30%, 50%, 70% { transform: translateX(-4px); } 40%, 60% { transform: translateX(4px); } }
 
 .anim-view { animation: fadeInUp 0.28s ease-out; }
 .anim-pulse-dot { animation: softPulse 2s ease-in-out infinite; }
 .anim-card-in { animation: cardIn 0.22s ease-out; }
+.anim-shake { animation: shakeX 0.4s ease-in-out; }
+.tap { transition: transform 0.12s ease; }
+.tap:active { transform: scale(0.96); }
 .hover-lift { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
 .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
 .transition-smooth { transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease; }
@@ -2798,10 +2802,12 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
   const [creatorName, setCreatorName] = useState("");
   const [creatorPassword, setCreatorPassword] = useState("");
   const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState(0);
+  const flagError = (msg) => { setError(msg); setErrorKey((k) => k + 1); };
 
   const submitTeam = () => {
     const required = (teamAgency === "US" ? settings.adminPinUS : settings.adminPinCZ) || "";
-    if (required && teamPin !== required) { setError("Wrong PIN."); return; }
+    if (required && teamPin !== required) { flagError("Wrong PIN."); return; }
     onLogin({ role: "admin", name: "Team", agency: teamAgency });
   };
 
@@ -2811,21 +2817,21 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
   const submitCreator = async () => {
     const typed = creatorName.trim().toLowerCase();
     const m = models.find((mm) => mm.name.trim().toLowerCase() === typed);
-    if (!m) { setError("No account with that name. Ask your manager to add you first."); return; }
+    if (!m) { flagError("No account with that name. Ask your manager to add you first."); return; }
     if (!m.pin) {
-      if (!creatorPassword) { setError("Choose a password to finish setting up your account."); return; }
+      if (!creatorPassword) { flagError("Choose a password to finish setting up your account."); return; }
       await onRegisterPassword(m.name, creatorPassword);
       onLogin({ role: "creator", name: m.name, agency: m.agency || "CZ" });
       return;
     }
-    if (creatorPassword !== m.pin) { setError("Wrong name or password."); return; }
+    if (creatorPassword !== m.pin) { flagError("Wrong name or password."); return; }
     onLogin({ role: "creator", name: m.name, agency: m.agency || "CZ" });
   };
 
   return (
     <div className="min-h-screen c-bg-app flex items-center justify-center px-4" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{fontImport}</style>
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm anim-card-in">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Clapperboard size={22} className="c-accent" />
           <span className="text-2xl font-extrabold tracking-tight c-text">AGENCY OS</span>
@@ -2833,72 +2839,72 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
 
         <div className="flex gap-1.5 c-bg-surface border c-border rounded-lg p-1 mb-5">
           <button onClick={() => { setTab("team"); setTeamAgency(null); setError(""); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 fs-11 font-mono uppercase py-2 rounded-lg ${tab === "team" ? "c-bg-accent c-onaccent font-semibold" : "c-muted"}`}>
+            className={`tap flex-1 flex items-center justify-center gap-1.5 fs-11 font-mono uppercase py-2 rounded-lg transition-colors duration-200 ${tab === "team" ? "c-bg-accent c-onaccent font-semibold" : "c-muted"}`}>
             <ShieldCheck size={13} /> Team
           </button>
           <button onClick={() => { setTab("creator"); setError(""); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 fs-11 font-mono uppercase py-2 rounded-lg ${tab === "creator" ? "c-bg-accent c-onaccent font-semibold" : "c-muted"}`}>
+            className={`tap flex-1 flex items-center justify-center gap-1.5 fs-11 font-mono uppercase py-2 rounded-lg transition-colors duration-200 ${tab === "creator" ? "c-bg-accent c-onaccent font-semibold" : "c-muted"}`}>
             <UserCircle2 size={13} /> Creator
           </button>
         </div>
 
-        <div className="c-bg-surface border c-border rounded-xl p-5">
+        <div className="c-bg-surface border c-border rounded-xl p-5 overflow-hidden">
           {tab === "team" ? (
             !teamAgency ? (
-              <>
+              <div key="team-agency" className="anim-card-in">
                 <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-2">Which agency?</label>
                 <div className="flex gap-2">
                   <button onClick={() => setTeamAgency("CZ")}
-                    className="flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent">
+                    className="tap flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent transition-colors duration-150">
                     🇨🇿 CZ Team
                   </button>
                   <button onClick={() => setTeamAgency("US")}
-                    className="flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent">
+                    className="tap flex-1 py-3 rounded-lg border c-border c-text text-sm font-semibold hover-border-accent transition-colors duration-150">
                     🇺🇸 US Team
                   </button>
                 </div>
-              </>
+              </div>
             ) : (
-              <>
+              <div key="team-pin" className="anim-card-in">
                 <div className="flex items-center justify-between mb-3">
                   <label className="fs-10 uppercase tracking-wide c-muted font-mono">
                     {teamAgency} PIN
                   </label>
-                  <button onClick={() => { setTeamAgency(null); setTeamPin(""); setError(""); }} className="fs-10 font-mono c-faint hover-accent-text">
+                  <button onClick={() => { setTeamAgency(null); setTeamPin(""); setError(""); }} className="tap fs-10 font-mono c-faint hover-accent-text">
                     ← switch
                   </button>
                 </div>
                 <input type="password" value={teamPin} onChange={(e) => setTeamPin(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && submitTeam()} autoFocus
-                  className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-4 outline-none focus-border-accent" />
+                  className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-4 outline-none focus-border-accent transition-colors duration-150" />
                 <button onClick={submitTeam}
-                  className="w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
+                  className="tap w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2 transition-colors duration-150">
                   Enter dashboard
                 </button>
-              </>
+              </div>
             )
           ) : (
-            <>
+            <div key="creator" className="anim-card-in">
               <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Your name</label>
               <input value={creatorName} onChange={(e) => { setCreatorName(e.target.value); setError(""); }}
                 placeholder="Type your name" autoFocus
-                className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-3 outline-none focus-border-accent" />
+                className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-3 outline-none focus-border-accent transition-colors duration-150" />
               <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">
                 {needsRegistration ? "Choose a password" : "Password"}
               </label>
               <input type="password" value={creatorPassword} onChange={(e) => setCreatorPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitCreator()}
-                className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-1 outline-none focus-border-accent" />
+                className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2.5 text-sm c-text mb-1 outline-none focus-border-accent transition-colors duration-150" />
               {needsRegistration && (
-                <p className="fs-10 c-accent font-mono mb-3">First time here — this sets your password for next time.</p>
+                <p className="fs-10 c-accent font-mono mb-3 anim-view">First time here — this sets your password for next time.</p>
               )}
               <button onClick={submitCreator}
-                className={`w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2 ${needsRegistration ? "mt-3" : "mt-3"}`}>
+                className="tap w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2 transition-colors duration-150 mt-3">
                 {needsRegistration ? "Create password & enter" : "Enter"}
               </button>
-            </>
+            </div>
           )}
-          {error && <p className="c-warn text-xs font-mono text-center mt-3">{error}</p>}
+          {error && <p key={errorKey} className="c-warn text-xs font-mono text-center mt-3 anim-shake">{error}</p>}
         </div>
         <p className="fs-10 c-faint font-mono text-center mt-4">
           Password is a convenience gate for this internal tool, not encrypted security.
@@ -3915,7 +3921,7 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
 
   return (
     <div className="relative">
-      <button onClick={toggle} className="relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+      <button onClick={toggle} className="tap relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
         <Bell size={16} />
         {total > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full c-bg-accent c-onaccent fs-9 font-mono font-bold flex items-center justify-center">
@@ -3966,7 +3972,7 @@ function AdminNotificationBell({ cards, tasks, onNavigate }) {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen((v) => !v)} className="relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+      <button onClick={() => setOpen((v) => !v)} className="tap relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
         <Bell size={16} />
         {total > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full c-bg-accent c-onaccent fs-9 font-mono font-bold flex items-center justify-center">
@@ -4022,7 +4028,7 @@ function GlobalSearch({ cards, tasks, models, trends, onNavigate, trendsNavId, s
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+      <button onClick={() => setOpen((v) => !v)} className="tap p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
         <Search size={16} />
       </button>
       {open && (
@@ -4756,7 +4762,7 @@ function App() {
           )}
           {session.role === "admin" && (
             <button onClick={() => setView("settings")} title="Settings"
-              className="p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
+              className="tap p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
               <Settings size={15} />
             </button>
           )}
@@ -4774,7 +4780,7 @@ function App() {
             </div>
           </div>
           <button onClick={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
-            title="Sign out" className="p-1.5 rounded-lg c-muted hover-warn hover-bg-surface transition-colors ml-1">
+            title="Sign out" className="tap p-1.5 rounded-lg c-muted hover-warn hover-bg-surface transition-colors ml-1">
             <LogOut size={15} />
           </button>
         </div>
@@ -4790,8 +4796,8 @@ function App() {
             full labels), always full-width from the sm breakpoint up. */}
         <aside className={`${mobileNavOpen ? "fixed inset-y-0 left-0 z-50 w-56 shadow-2xl" : "w-14 sm:w-56"} flex border-r c-border c-bg-panel flex-shrink-0 flex-col transition-all sm:static sm:z-auto sm:shadow-none`}>
           <button onClick={() => setMobileNavOpen((v) => !v)}
-            className="sm:hidden flex items-center justify-center p-3 c-muted hover-text-primary flex-shrink-0">
-            {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+            className="tap sm:hidden flex items-center justify-center p-3 c-muted hover-text-primary flex-shrink-0">
+            {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
             {NAV.map((n) => {
@@ -4803,10 +4809,10 @@ function App() {
                   <div key={n.id}>
                     <button
                       onClick={() => { setMobileNavOpen(true); setContentNavOpen((v) => !v); }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
-                      <Icon size={15} />
+                      className={`tap w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
+                      <Icon size={19} />
                       <span className={`flex-1 text-left ${labelCls}`}>{n.label}</span>
-                      <ChevronRight size={13} className={`transition-transform ${labelCls}`} style={{ transform: contentNavOpen ? "rotate(90deg)" : "none" }} />
+                      <ChevronRight size={15} className={`transition-transform ${labelCls}`} style={{ transform: contentNavOpen ? "rotate(90deg)" : "none" }} />
                     </button>
                     {contentNavOpen && (
                       <div className={`ml-6 mt-1 space-y-0.5 border-l c-border pl-2 ${mobileNavOpen ? "" : "hidden sm:block"}`}>
@@ -4816,8 +4822,8 @@ function App() {
                           return (
                             <button key={p.id}
                               onClick={() => { setView("content"); setContentPlatform(p.id); setMobileNavOpen(false); }}
-                              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg fs-12 font-mono transition-colors ${platformActive ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
-                              <PIcon size={12} />{p.label}
+                              className={`tap w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg fs-12 font-mono transition-colors ${platformActive ? "c-bg-accent-a2 c-accent font-semibold" : "c-muted hover-bg-surface"}`}>
+                              <PIcon size={15} />{p.label}
                             </button>
                           );
                         })}
@@ -4828,8 +4834,8 @@ function App() {
               }
               return (
                 <button key={n.id} onClick={() => { setView(n.id); setMobileNavOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
-                  <Icon size={15} />
+                  className={`tap w-full flex items-center gap-2.5 px-3 py-2 rounded-lg fs-13 transition-colors ${activeNav ? "c-bg-accent-a1 c-accent" : "c-muted hover-bg-surface hover-text-primary"}`}>
+                  <Icon size={19} />
                   <span className={labelCls}>{n.label}</span>
                 </button>
               );
