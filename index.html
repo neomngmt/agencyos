@@ -6,7 +6,7 @@
 <title>Zion OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -409,7 +409,7 @@ const PLATFORMS = [
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const fontImport = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,700&family=Dancing+Script:wght@600;700&display=swap');
 
 :root {
   --bg-app: #07090a;
@@ -505,6 +505,19 @@ button.c-bg-accent.rounded-xl,
 .c-bg-accent.rounded-xl {
   border-radius: 999px !important;
   box-shadow: 0 0 18px rgba(18,179,76,0.30);
+}
+
+@keyframes neoFlicker{
+  0%,100%{ opacity:0.85; }
+  50%{ opacity:1; }
+  52%{ opacity:0.6; }
+  54%{ opacity:1; }
+}
+@keyframes writeOn{
+  to{ -webkit-clip-path:inset(0 0% 0 0); clip-path:inset(0 0% 0 0); }
+}
+@media (min-width: 641px) {
+  .login-desktop-scale { transform: scale(1.1); }
 }
 `;
 
@@ -1741,7 +1754,7 @@ function CalendarView({ cards, tasks, onNavigate, restrictModel }) {
 
 const LANDING_PAGE_CSS = `
 
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Dancing+Script:wght@600;700&display=swap');
 
 :root{
   --lp-bg: #07090a;
@@ -1787,6 +1800,10 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
   padding:10px 20px; border-radius:999px; text-decoration:none;
 }
 @media (max-width:860px){ .nav .links{ display:none; } }
+@media (min-width:861px){
+  .nav .brand{ font-size:21px; gap:14px; }
+  .nav .brand .mark{ width:29px; height:29px; }
+}
 
 /* ---------- hero ---------- */
 .hero{ padding:100px 0 0; text-align:center; }
@@ -1821,11 +1838,16 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 .hero-note b{ color:var(--lp-green); }
 
 /* ---------- live floor panel ---------- */
-.floor{
-  margin:70px auto 0; max-width:1120px; border:1px solid var(--lp-border); border-radius:12px;
+.floor{ margin:70px auto 0; max-width:1120px; }
+.floor-tilt{
+  border:1px solid var(--lp-border); border-radius:12px;
   background:linear-gradient(180deg, rgba(18,179,76,0.05), transparent 40%), var(--lp-panel);
   padding:26px 30px 30px;
+  transform:perspective(1400px) rotateX(10deg);
+  transform-origin:center bottom;
+  box-shadow:0 0 50px rgba(57,255,160,0.14), 0 35px 70px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(57,255,160,0.08);
 }
+@media (max-width:900px){ .floor-tilt{ transform:none; box-shadow:none; } }
 .floor-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
 .floor-head .label{ font-size:11px; letter-spacing:2px; color:var(--lp-text-dim); }
 .floor-head .live{ font-size:11px; letter-spacing:2px; color:var(--lp-green); display:flex; align-items:center; gap:8px; }
@@ -1860,7 +1882,7 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 
 .connector{ width:60px; height:240px; margin:0 auto; position:relative; }
 .connector-svg{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
-.connector-path{ fill:none; stroke:url(#connector-grad); stroke-width:1.4; }
+.connector-path{ fill:none; stroke:url(#connector-grad); stroke-width:2; filter:drop-shadow(0 0 3px rgba(18,179,76,0.5)); }
 .connector-dot{ position:absolute; top:0; left:50%; transform:translate(-50%,-50%); width:9px; height:9px; border-radius:50%; background:var(--lp-green); box-shadow:0 0 10px var(--lp-green); opacity:0; }
 .connector.desktop-only{ display:none; }
 @media (min-width:861px){ .connector.desktop-only{ display:block; } }
@@ -1995,7 +2017,7 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 .winner-row .thumb{ width:30px; height:30px; border-radius:6px; background:linear-gradient(135deg, var(--lp-green-dim), var(--lp-bg)); border:1px solid var(--lp-border); flex-shrink:0; }
 .winner-label{ flex:1; font-size:13px; color:var(--lp-text); min-width:0; }
 .winner-label .bar{ height:3px; background:var(--lp-border); border-radius:2px; margin-top:8px; overflow:hidden; }
-.winner-label .bar span{ display:block; height:100%; background:linear-gradient(90deg, var(--lp-green-dim), var(--lp-green)); }
+.winner-label .bar span{ display:block; height:100%; background:linear-gradient(90deg, var(--lp-green-dim), var(--lp-green)); width:0%; transition:width 1.1s cubic-bezier(.2,.7,.3,1); }
 .winner-row .score{ font-size:14px; font-weight:700; color:var(--lp-green-soft); flex-shrink:0; }
 .winner-stat{ display:flex; align-items:center; gap:16px; margin-top:16px; padding:16px; border:1px solid var(--lp-border); border-radius:10px; background:rgba(18,179,76,0.04); }
 .winner-stat .big{ font-size:26px; font-weight:700; color:var(--lp-green-soft); }
@@ -2089,6 +2111,26 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 
 .site-footer{ border-top:1px solid var(--lp-border); padding:26px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; font-size:11px; color:var(--lp-text-dim); letter-spacing:1px; max-width:1180px; margin:0 auto; }
 .footer-mark{ color:var(--lp-green); }
+#mainContent{ -webkit-user-select:none; -moz-user-select:none; user-select:none; }
+.brand{ position:relative; }
+.by-neo-tag{
+  position:absolute; right:0; top:100%; margin-top:0;
+  display:inline-block; line-height:1;
+  font-family:'Dancing Script', cursive; font-weight:700; font-size:9px; white-space:nowrap;
+  color:var(--lp-green); text-shadow:0 0 3px var(--lp-green), 0 0 6px var(--lp-green);
+  -webkit-clip-path:inset(0 100% 0 0); clip-path:inset(0 100% 0 0);
+  animation:writeOn 1.2s steps(20,end) forwards, neoFlicker 3.5s ease-in-out infinite 1.2s;
+  pointer-events:none;
+}
+@keyframes neoFlicker{
+  0%,100%{ opacity:0.85; }
+  50%{ opacity:1; }
+  52%{ opacity:0.6; }
+  54%{ opacity:1; }
+}
+@keyframes writeOn{
+  to{ -webkit-clip-path:inset(0 0% 0 0); clip-path:inset(0 0% 0 0); }
+}
 .footer-links{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
 .footer-links a{ color:var(--lp-text-dim); text-decoration:none; transition:color .15s ease; }
 .footer-links a:hover{ color:var(--lp-green-soft); }
@@ -2173,9 +2215,9 @@ a:focus-visible, button:focus-visible{ outline:2px solid var(--lp-green); outlin
 const LANDING_PAGE_BODY = `
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <linearGradient id="connector-grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" style="stop-color:var(--lp-border)"/>
-      <stop offset="100%" style="stop-color:var(--lp-green-dim)"/>
+    <linearGradient id="connector-grad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="240">
+      <stop offset="0%" style="stop-color:var(--lp-green-dim)"/>
+      <stop offset="100%" style="stop-color:var(--lp-green-soft)"/>
     </linearGradient>
   </defs>
 </svg>
@@ -2196,6 +2238,7 @@ const LANDING_PAGE_BODY = `
           </svg>
         </span>
         ZION OS
+        <span class="by-neo-tag">by neomngmt</span>
       </div>
       <div class="links">
         <a href="#system">The System</a>
@@ -2221,34 +2264,36 @@ const LANDING_PAGE_BODY = `
   </div>
 
   <div class="floor" data-reveal>
+    <div class="floor-tilt">
     <div class="floor-head">
       <div class="label mono">ZION OS · LIVE FLOOR</div>
       <div class="live mono"><span class="dot"></span>ALL SYSTEMS WATCHING</div>
     </div>
     <div class="floor-grid">
       <div class="floor-cell">
-        <div class="k mono">CARDS TRACKED <span></span></div>
-        <div class="v" data-count="62">0</div>
-        <div class="sub">across IG, X, TikTok</div>
+        <div class="k mono">FOLLOWERS WATCHED <span style="color:var(--lp-green)">LIVE</span></div>
+        <div class="v" data-count="340216">0</div>
+        <div class="sub">TikTok + Instagram · whole roster</div>
       </div>
       <div class="floor-cell">
-        <div class="k mono">REELS RANKED</div>
+        <div class="k mono">REELS READ</div>
         <div class="v" data-count="212">0</div>
-        <div class="sub">by views, this week</div>
+        <div class="sub">ranked before breakfast</div>
       </div>
       <div class="floor-cell">
-        <div class="k mono">STATS SYNCED</div>
-        <div class="v">24/7</div>
-        <div class="sub">Buffer, on its own cron</div>
-      </div>
-      <div class="floor-cell">
-        <div class="k mono">QUESTIONS ANSWERED</div>
+        <div class="k mono">WINNERS DETECTED</div>
         <div class="v" data-count="18">0</div>
-        <div class="sub">by Neo, today</div>
+        <div class="sub">proven, ready to repost</div>
+      </div>
+      <div class="floor-cell">
+        <div class="k mono">SCRIPTS WRITTEN</div>
+        <div class="v" data-count="14">0</div>
+        <div class="sub">overnight · queued to film, per model</div>
       </div>
     </div>
     <div class="floor-ticker mono">
       <div class="floor-ticker-track" id="floorTicker"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -2265,26 +2310,29 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">Four instruments. One brain. Nothing moves in your agency without it being seen, ranked, and written down.</p>
     </div>
 
-    <div class="connector"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 40 0 L 15 240"/></svg><div class="connector-dot"></div></div>
+    <div class="connector"><svg class="connector-svg" viewBox="0 0 60 240" preserveAspectRatio="none"><path class="connector-path" d="M 30 0 L 30 240"/></svg><div class="connector-dot"></div></div>
 
     <div class="panel map-panel" data-reveal>
       <div class="panel-head">
         <div class="label mono">SYSTEM MAP · LIVE</div>
-        <div class="meta mono">4 ARMS · 1 BRAIN</div>
+        <div class="meta mono">6 ARMS · 1 BRAIN</div>
       </div>
       <div class="map-body">
         <svg class="map-lines" viewBox="0 0 1000 400" preserveAspectRatio="none">
-          <path d="M 500 0 L 340 50" />
-          <path d="M 340 50 C 600 50, 650 200, 790 200" />
-          <path d="M 340 150 C 600 150, 650 200, 790 200" />
-          <path d="M 340 250 C 600 250, 650 200, 790 200" />
-          <path d="M 340 350 C 600 350, 650 200, 790 200" />
+          <path d="M 340 33 C 600 33, 650 200, 790 200" />
+          <path d="M 340 100 C 600 100, 650 200, 790 200" />
+          <path d="M 340 167 C 600 167, 650 200, 790 200" />
+          <path d="M 340 233 C 600 233, 650 200, 790 200" />
+          <path d="M 340 300 C 600 300, 650 200, 790 200" />
+          <path d="M 340 367 C 600 367, 650 200, 790 200" />
         </svg>
         <div class="map-rows">
           <div class="map-row"><div><div class="row-label mono">MODEL MANAGER</div><div class="row-sub mono">ROSTER · DAILY SCANS</div></div><div class="dot-node"></div></div>
           <div class="map-row"><div><div class="row-label mono">CONTENT DIRECTOR · IG</div><div class="row-sub mono">WINNERS · SCRIPTS</div></div><div class="dot-node"></div></div>
           <div class="map-row"><div><div class="row-label mono">CONTENT DIRECTOR · X</div><div class="row-sub mono">TRENDS · CAPTIONS</div></div><div class="dot-node"></div></div>
           <div class="map-row"><div><div class="row-label mono">THE LEDGER</div><div class="row-sub mono">EARNINGS · REACH</div></div><div class="dot-node"></div></div>
+          <div class="map-row"><div><div class="row-label mono">ONLYFANS CRM</div><div class="row-sub mono">EARNINGS · FANS</div></div><div class="dot-node"></div></div>
+          <div class="map-row"><div><div class="row-label mono">VOICE COMMAND</div><div class="row-sub mono">ASK · IT ANSWERS</div></div><div class="dot-node"></div></div>
         </div>
         <div class="map-brain">
           <div class="brain-ring"></div>
@@ -2429,20 +2477,20 @@ const LANDING_PAGE_BODY = `
             <div class="winner-row">
               <div class="rank mono">01</div>
               <div class="thumb"></div>
-              <div class="winner-label">Mirror-check hook · slow zoom reveal<div class="bar"><span style="width:94%"></span></div></div>
-              <div class="score mono">94.2</div>
+              <div class="winner-label">Mirror-check hook · slow zoom reveal<div class="bar"><span data-bar-width="94"></span></div></div>
+              <div class="score mono" data-count="94.2" data-decimals="1">0.0</div>
             </div>
             <div class="winner-row">
               <div class="rank mono">02</div>
               <div class="thumb"></div>
-              <div class="winner-label">POV caption bait · 3-cut pacing<div class="bar"><span style="width:88%"></span></div></div>
-              <div class="score mono">88.7</div>
+              <div class="winner-label">POV caption bait · 3-cut pacing<div class="bar"><span data-bar-width="88"></span></div></div>
+              <div class="score mono" data-count="88.7" data-decimals="1">0.0</div>
             </div>
             <div class="winner-row">
               <div class="rank mono">03</div>
               <div class="thumb"></div>
-              <div class="winner-label">Outfit transition · trending audio<div class="bar"><span style="width:81%"></span></div></div>
-              <div class="score mono">81.3</div>
+              <div class="winner-label">Outfit transition · trending audio<div class="bar"><span data-bar-width="81"></span></div></div>
+              <div class="score mono" data-count="81.3" data-decimals="1">0.0</div>
             </div>
             <div class="winner-stat">
               <div class="big mono">14</div>
@@ -2672,7 +2720,7 @@ const LANDING_PAGE_BODY = `
       <p class="section-sub">One for the team, one for the roster. Both just need a name and a password.</p>
     </div>
 
-    <div class="connector connector-fork desktop-only"><svg class="connector-svg" viewBox="0 0 100 240" preserveAspectRatio="none"><path class="connector-path" d="M 50 0 L 50 140 L 25 240"/><path class="connector-path" d="M 50 0 L 50 140 L 75 240"/></svg><div class="connector-dot"></div><div class="connector-dot"></div></div>
+    <div class="connector connector-fork desktop-only"><svg class="connector-svg" viewBox="0 0 1120 240" preserveAspectRatio="none"><path class="connector-path" d="M 560 0 L 560 110 C 560 150, 448 170, 280 240"/><path class="connector-path" d="M 560 0 L 560 110 C 560 150, 672 170, 840 240"/></svg><div class="connector-dot"></div><div class="connector-dot"></div></div>
     <div class="doors-grid">
       <div class="door-card tilt-card" data-reveal>
         <div class="door-label mono">DOOR 01</div>
@@ -2825,9 +2873,9 @@ function LandingPage({ onSignIn }) {
     }
     mountTicker("floorTicker", [
       "VERTICAL \u00b7 <b>READY TO POST</b>",
-      "CAPTION QUEUED \u00b7 REPOST WINDOW <b>OPEN</b>",
-      "BUFFER SYNC COMPLETE \u00b7 <b>4/4 CHANNELS ALIVE</b> \u00b7 06:00",
-      "TREND SCAN \u00b7 3 NEW SIGNALS RANKED",
+      "ONE MODEL SKIPPED IG \u00b7 <b>NUDGE SENT</b>",
+      "WINNER DETECTED \u00b7 <b>@ANNA</b> HOOK RANKED #2 THIS WEEK",
+      "SCRIPT QUEUED \u00b7 CAPTION READY",
       "REEL LOGGED \u00b7 TOP PERFORMER <b>FLAGGED</b>",
     ]);
     mountTicker("bandTicker", [
@@ -2861,14 +2909,19 @@ function LandingPage({ onSignIn }) {
 
     // count-up numbers
     function animateCount(el) {
-      const target = parseInt(el.dataset.count, 10);
+      const target = parseFloat(el.dataset.count);
       if (isNaN(target)) return;
+      const decimals = parseInt(el.dataset.decimals, 10) || 0;
       const duration = 1100;
       const start = performance.now();
+      const row = el.closest(".winner-row");
+      const bar = row ? row.querySelector(".bar span[data-bar-width]") : null;
+      if (bar) requestAnimationFrame(() => { bar.style.width = bar.dataset.barWidth + "%"; });
       function tick(now) {
         const p = Math.min(1, (now - start) / duration);
         const eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = Math.round(target * eased).toLocaleString();
+        const val = target * eased;
+        el.textContent = decimals > 0 ? val.toFixed(decimals) : Math.round(val).toLocaleString();
         if (p < 1) requestAnimationFrame(tick);
       }
       requestAnimationFrame(tick);
@@ -3050,10 +3103,21 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
   return (
     <div className="min-h-screen c-bg-app flex items-center justify-center px-4" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{fontImport}</style>
-      <div className="w-full max-w-sm anim-card-in">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <Clapperboard size={22} className="c-accent" />
-          <span className="text-2xl font-extrabold tracking-tight c-text">ZION OS</span>
+      <div className="w-full max-w-sm login-desktop-scale">
+      <div className="anim-card-in">
+        <div className="flex items-center justify-center mb-8">
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "10px" }}>
+            <Clapperboard size={34} className="c-accent" />
+            <span className="font-extrabold tracking-tight c-text" style={{ fontSize: "34px" }}>ZION OS</span>
+            <span style={{
+              position: "absolute", right: 0, top: "100%", marginTop: "-4px",
+              display: "inline-block", lineHeight: 1, whiteSpace: "nowrap",
+              fontFamily: "'Dancing Script', cursive", fontWeight: 700, fontSize: "15px",
+              color: "var(--accent, #39ffa0)", textShadow: "0 0 3px currentColor, 0 0 6px currentColor",
+              WebkitClipPath: "inset(0 100% 0 0)", clipPath: "inset(0 100% 0 0)",
+              animation: "writeOn 1.2s steps(20,end) forwards, neoFlicker 3.5s ease-in-out infinite 1.2s",
+            }}>by neomngmt</span>
+          </div>
         </div>
 
         <div className="flex gap-1.5 c-bg-surface border c-border rounded-lg p-1 mb-5">
@@ -3128,6 +3192,7 @@ function LoginScreen({ models, settings, onLogin, onRegisterPassword }) {
         <p className="fs-10 c-faint font-mono text-center mt-4">
           Password is a convenience gate for this internal tool, not encrypted security.
         </p>
+      </div>
       </div>
     </div>
   );
@@ -4920,10 +4985,10 @@ function OnboardingScreen({ name, url, onContinue, onQuestionnaireReceived }) {
 
 // ---------- trend scraper ----------
 
+const APIFY_API_KEY = "apify_api_v1zS38dcGJFb4it5afeC7oH9kqVNzj0BnIY4";
+
 function TrendScraper({ models, persistModels, restrictModel }) {
   const scopedModels = restrictModel ? models.filter(m => m.name === restrictModel) : models;
-  const [apifyKey, setApifyKey] = React.useState(() => { try { return localStorage.getItem("apify_key_v1") || ""; } catch { return ""; } });
-  const [showKey, setShowKey] = React.useState(false);
   const [selectedModel, setSelectedModel] = React.useState(restrictModel || models[0]?.name || "");
   const [scraping, setScraping] = React.useState(false);
   const [results, setResults] = React.useState([]);
@@ -4934,8 +4999,6 @@ function TrendScraper({ models, persistModels, restrictModel }) {
 
   const model = scopedModels.find(m => m.name === selectedModel);
   const inspoProfiles = model?.inspoProfiles || [];
-
-  const saveKey = (k) => { setApifyKey(k); try { localStorage.setItem("apify_key_v1", k); } catch {} };
 
   const addProfile = async () => {
     if (!addingHandle.trim() || !model) return;
@@ -4952,17 +5015,17 @@ function TrendScraper({ models, persistModels, restrictModel }) {
   };
 
   const scrape = async () => {
-    if (!apifyKey || !inspoProfiles.length) return;
+    if (!inspoProfiles.length) return;
     setScraping(true); setError(""); setResults([]); setProfileCount(0);
     try {
       const directUrls = inspoProfiles.map(p => `https://www.instagram.com/${p.igHandle}/reels/`);
       const resp = await fetch(
-        `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${apifyKey}&timeout=180&memory=512`,
+        `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}&timeout=180&memory=512`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ directUrls, resultsType: "posts", resultsLimit: 30 }) }
       );
       if (!resp.ok) { const txt = await resp.text(); throw new Error(`Apify ${resp.status}: ${txt.slice(0, 300)}`); }
       const data = await resp.json();
-      if (!Array.isArray(data)) throw new Error("Neocekavana odpoved od Apify — zkontroluj API key.");
+      if (!Array.isArray(data)) throw new Error("Unexpected response from Apify.");
       const grouped = {};
       data.forEach(post => { const u = (post.ownerUsername || post.username || "?").toLowerCase(); if (!grouped[u]) grouped[u] = []; grouped[u].push(post); });
       setProfileCount(Object.keys(grouped).length);
@@ -4982,35 +5045,28 @@ function TrendScraper({ models, persistModels, restrictModel }) {
   };
 
   const fmt = n => !n ? "0" : n >= 1000000 ? `${(n/1000000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n);
-  const emptyMsg = !selectedModel ? "Vyber modelku vlevo" : !inspoProfiles.length ? "Pridej inspo profily" : !apifyKey ? "Vloz Apify API key" : "Klikni Scan";
+  const emptyMsg = !selectedModel ? "Select a model on the left" : !inspoProfiles.length ? "Add reference profiles" : "Click Scan";
 
   return (
     <div>
-      <div className="c-bg-surface border c-border rounded-xl p-4 mb-5 flex flex-wrap gap-3 items-end">
-        <div className="flex-1 minw-240">
-          <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-1.5">Apify API Key</div>
-          <div className="flex gap-2">
-            <input type={showKey ? "text" : "password"} value={apifyKey} onChange={e => saveKey(e.target.value)} placeholder="apify_api_..."
-              className="flex-1 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent font-mono" />
-            <button onClick={() => setShowKey(s => !s)} className="px-3 py-2 rounded-lg border c-border c-muted fs-11 font-mono">{showKey ? "Skryt" : "Ukazat"}</button>
+      <div className="c-bg-surface border c-border rounded-xl p-4 mb-5 flex flex-wrap gap-3 items-center justify-end">
+        <div className="w-full">
+          <div className="fs-10 c-muted font-mono uppercase mb-2">Viral threshold — post is viral if it beats the profile average by</div>
+          <div className="flex flex-wrap gap-2">
+            {[1.5, 2, 2.5, 3].map(t => (
+              <button key={t} onClick={() => setThreshold(t)}
+                className={`px-5 py-3 rounded-full border fs-14 font-mono font-semibold transition-colors ${threshold === t ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+                {t}x
+              </button>
+            ))}
           </div>
-          {!apifyKey && <p className="fs-10 c-faint font-mono mt-1.5">Najdes na apify.com - Settings - API & Integrations</p>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="fs-10 c-muted font-mono uppercase">Viral prah</span>
-          <select value={threshold} onChange={e => setThreshold(Number(e.target.value))} className="c-bg-app border c-border rounded-lg px-2.5 py-2 fs-12 c-text font-mono outline-none">
-            <option value={1.5}>1.5x prumer</option>
-            <option value={2}>2x prumer</option>
-            <option value={2.5}>2.5x prumer</option>
-            <option value={3}>3x prumer</option>
-          </select>
         </div>
       </div>
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="w-full lg:w-64 flex-shrink-0">
           {!restrictModel && (
             <>
-              <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Modelka</div>
+              <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Model</div>
               <div className="flex flex-col gap-1 mb-4">
                 {scopedModels.map(m => (
                   <button key={m.name} onClick={() => { setSelectedModel(m.name); setResults([]); setError(""); }}
@@ -5023,8 +5079,8 @@ function TrendScraper({ models, persistModels, restrictModel }) {
           )}
           {selectedModel && (
             <div className="c-bg-surface border c-border rounded-xl p-3">
-              <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Inspo profily</div>
-              {inspoProfiles.length === 0 && <p className="fs-11 c-faint font-mono italic mb-2">Zatim zadne</p>}
+              <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Reference profiles</div>
+              {inspoProfiles.length === 0 && <p className="fs-11 c-faint font-mono italic mb-2">None yet</p>}
               <div className="space-y-1 mb-2">
                 {inspoProfiles.map(p => (
                   <div key={p.id} className="flex items-center justify-between py-1 border-b c-border last:border-0">
@@ -5034,8 +5090,8 @@ function TrendScraper({ models, persistModels, restrictModel }) {
                 ))}
               </div>
               <div className="flex gap-1.5">
-                <input value={addingHandle} onChange={e => setAddingHandle(e.target.value)} onKeyDown={e => e.key === "Enter" && addProfile()}
-                  placeholder="@handle nebo odkaz" className="flex-1 c-bg-app border c-border rounded-lg px-2 py-1.5 fs-12 c-text outline-none focus-border-accent" />
+                <input value={addingHandle} onChange={e => setAddingHandle(e.target.value)} onKeyDown={e => e.key === "Enter" && addProfile()} onBlur={() => addProfile()}
+                  placeholder="@handle or link" className="flex-1 c-bg-app border c-border rounded-lg px-2 py-1.5 fs-12 c-text outline-none focus-border-accent" />
                 <button onClick={addProfile} className="px-2.5 py-1.5 rounded-lg c-bg-accent c-onaccent font-mono font-semibold"><Plus size={13} /></button>
               </div>
             </div>
@@ -5043,17 +5099,17 @@ function TrendScraper({ models, persistModels, restrictModel }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={scrape} disabled={scraping || !apifyKey || !selectedModel || !inspoProfiles.length}
+            <button onClick={scrape} disabled={scraping || !selectedModel || !inspoProfiles.length}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg c-bg-accent c-onaccent fs-12 font-mono uppercase tracking-wide font-semibold hover-bg-accent2 disabled:opacity-40 tap">
-              {scraping ? <><Loader2 size={14} className="animate-spin" /> Scraping...</> : <><Zap size={14} /> Scan viralich reels</>}
+              {scraping ? <><Loader2 size={14} className="animate-spin" /> Scraping...</> : <><Zap size={14} /> Scan viral reels</>}
             </button>
           </div>
           {error && <div className="c-bg-surface border c-border-warn-a rounded-xl p-3 mb-4 fs-12 c-warn font-mono break-all">{error}</div>}
           {!scraping && results.length === 0 && !error && <div className="fs-12 c-faint font-mono italic py-12 text-center border border-dashed c-border rounded-xl">{emptyMsg}</div>}
-          {scraping && <div className="fs-12 c-muted font-mono py-12 text-center border border-dashed c-border rounded-xl">Scraping {inspoProfiles.length} profilu pres Apify... 1-2 min</div>}
+          {scraping && <div className="fs-12 c-muted font-mono py-12 text-center border border-dashed c-border rounded-xl">Scraping {inspoProfiles.length} profiles via Apify... 1-2 min</div>}
           {results.length > 0 && (
             <>
-              <div className="fs-11 c-muted font-mono mb-3"><span className="c-accent font-semibold">{results.length}</span> viralich reels z {profileCount} profilu</div>
+              <div className="fs-11 c-muted font-mono mb-3"><span className="c-accent font-semibold">{results.length}</span> viral reels from {profileCount} profiles</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {results.map((post, i) => (
                   <a key={post.url || i} href={post.url} target="_blank" rel="noopener noreferrer"
@@ -5071,7 +5127,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
                         <span style={{ color: "#E1306C" }}>&#9829; {fmt(post.likesCount)}</span>
                       </div>
                       {post.caption && <div className="fs-11 c-muted leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.caption}</div>}
-                      {post.timestamp && <div className="fs-10 c-faint font-mono mt-1">{new Date(post.timestamp).toLocaleDateString("cs-CZ")}</div>}
+                      {post.timestamp && <div className="fs-10 c-faint font-mono mt-1">{new Date(post.timestamp).toLocaleDateString("en-US")}</div>}
                     </div>
                   </a>
                 ))}
