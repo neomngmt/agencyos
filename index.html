@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Zion OS</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Crect width='24' height='24' rx='5' fill='%2307090a'/%3E%3Cpath d='M12 3L21 12L12 21L3 12Z' stroke='url(%23g)' stroke-width='1.6'/%3E%3Cpath d='M12 8L17 12L12 16L7 12Z' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='3' y1='3' x2='21' y2='21'%3E%3Cstop stop-color='%23a8ffce'/%3E%3Cstop offset='1' stop-color='%2339ffa0'/%3E%3C/linearGradient%3E%3C/defs%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
@@ -5055,7 +5056,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
           <div className="flex flex-wrap gap-2">
             {[1.5, 2, 2.5, 3].map(t => (
               <button key={t} onClick={() => setThreshold(t)}
-                className={`px-5 py-3 rounded-full border fs-14 font-mono font-semibold transition-colors ${threshold === t ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+                className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${threshold === t ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
                 {t}x
               </button>
             ))}
