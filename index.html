@@ -3217,9 +3217,6 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
   const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
   const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
   const [saved, setSaved] = useState(false);
-  const [inflowwKey, setInflowwKey] = useState(settings.inflowwApiKey || "");
-  const [showInflowwKey, setShowInflowwKey] = useState(false);
-  const [inflowwSaved, setInflowwSaved] = useState(false);
   const save = async () => {
     await persistSettings({
       ...settings,
@@ -3228,11 +3225,6 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  };
-  const saveInflowwKey = async () => {
-    await persistSettings({ ...settings, inflowwApiKey: inflowwKey.trim() });
-    setInflowwSaved(true);
-    setTimeout(() => setInflowwSaved(false), 2000);
   };
 
   const list = (integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS)
@@ -3271,31 +3263,6 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
         <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Creator Bible URL</label>
         <p className="c-muted text-xs mb-2">
           Fixed to <span className="c-text">{CREATOR_BIBLE_URL}</span>, shown once to each creator right after her first login.
-        </p>
-      </div>
-
-      <div className="border-t c-border pt-6 mb-8">
-        <div className="flex items-center gap-2 mb-1.5">
-          <DollarSign size={15} className="c-accent" />
-          <span className="text-sm c-text font-medium">Infloww API key</span>
-        </div>
-        <p className="c-muted text-xs mb-3">
-          One key covers the whole roster — earnings, subscriber, and marketing stats sync in automatically for every creator scoped to it in Infloww. No one needs to log in anywhere.
-        </p>
-        <div className="flex gap-2 mb-2">
-          <input type={showInflowwKey ? "text" : "password"} value={inflowwKey} onChange={(e) => setInflowwKey(e.target.value)}
-            placeholder="inf_..."
-            className="flex-1 c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text outline-none focus-border-accent font-mono" />
-          <button onClick={() => setShowInflowwKey((s) => !s)}
-            className="px-3 py-2 rounded-lg border c-border c-muted fs-11 font-mono">{showInflowwKey ? "Hide" : "Show"}</button>
-        </div>
-        <button onClick={saveInflowwKey}
-          className="py-2.5 px-4 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
-          Save key
-        </button>
-        {inflowwSaved && <p className="c-success text-xs font-mono mt-3">Saved.</p>}
-        <p className="fs-10 c-faint font-mono mt-3">
-          Infloww keys expire (max 180 days) — you'll need to generate a fresh one and paste it here when that happens.
         </p>
       </div>
 
