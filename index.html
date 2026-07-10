@@ -712,6 +712,22 @@ const reelsToDB = (r) => ({
   created_at: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
 });
 
+const trendProfilesToJS = (r) => ({ id: r.id, igHandle: r.ig_handle || "" });
+const trendProfilesToDB = (r) => ({ id: r.id, ig_handle: r.igHandle || "" });
+
+const weeklyTrendReelsToJS = (r) => ({
+  id: r.id, profile: r.profile || "", url: r.url || "", displayUrl: r.display_url || "",
+  videoUrl: r.video_url || "", username: r.username || "", likesCount: r.likes_count || 0,
+  videoViewCount: r.video_view_count || 0, caption: r.caption || "", ratio: r.ratio || 0,
+  timestamp: r.timestamp || null, syncedAt: r.synced_at || null,
+});
+const weeklyTrendReelsToDB = (r) => ({
+  id: r.id, profile: r.profile || "", url: r.url || "", display_url: r.displayUrl || "",
+  video_url: r.videoUrl || "", username: r.username || "", likes_count: r.likesCount || 0,
+  video_view_count: r.videoViewCount || 0, caption: r.caption || "", ratio: r.ratio || 0,
+  timestamp: r.timestamp || null, synced_at: r.syncedAt || new Date().toISOString(),
+});
+
 const trendsToJS = (r) => ({
   id: r.id, showCZ: !!r.show_cz, showUS: !!r.show_us, category: r.category || "",
   title: r.title || "", description: r.description || "", link: r.link || "",
@@ -3213,10 +3229,18 @@ function CreatorSettingsPanel({ model, persistModels, models }) {
   );
 }
 
-function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency }) {
+function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency, trendProfiles, persistTrendProfiles }) {
   const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
   const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
   const [saved, setSaved] = useState(false);
+  const [newTrendHandle, setNewTrendHandle] = useState("");
+  const addTrendProfile = () => {
+    const handle = newTrendHandle.trim().replace(/https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\//g, "").replace(/^@/, "");
+    if (!handle) return;
+    persistTrendProfiles([...(trendProfiles || []), { id: Math.random().toString(36).slice(2), igHandle: handle }]);
+    setNewTrendHandle("");
+  };
+  const removeTrendProfile = (id) => persistTrendProfiles((trendProfiles || []).filter((p) => p.id !== id));
   const save = async () => {
     await persistSettings({
       ...settings,
@@ -3264,6 +3288,33 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
         <p className="c-muted text-xs mb-2">
           Fixed to <span className="c-text">{CREATOR_BIBLE_URL}</span>, shown once to each creator right after her first login.
         </p>
+      </div>
+
+      <div className="border-t c-border pt-6 mb-8">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Flame size={15} className="c-accent" />
+          <span className="text-sm c-text font-medium">Trend profiles</span>
+        </div>
+        <p className="c-muted text-xs mb-3">
+          IG profiles to scan every Sunday for viral ideas across the whole roster (not tied to any one model). Results show up in the "Trends" tab.
+        </p>
+        <div className="c-bg-surface border c-border rounded-lg p-3 max-w-sm">
+          {(!trendProfiles || trendProfiles.length === 0) && <p className="fs-11 c-faint font-mono italic mb-2">None yet</p>}
+          <div className="space-y-1 mb-2">
+            {(trendProfiles || []).map((p) => (
+              <div key={p.id} className="flex items-center justify-between py-1 border-b c-border last:border-0">
+                <div className="flex items-center gap-1.5"><Instagram size={11} className="c-muted" /><span className="fs-12 c-text">@{p.igHandle}</span></div>
+                <button onClick={() => removeTrendProfile(p.id)} className="c-muted hover-warn ml-2"><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input value={newTrendHandle} onChange={(e) => setNewTrendHandle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTrendProfile()} onBlur={addTrendProfile}
+              placeholder="@handle or link" className="flex-1 c-bg-app border c-border rounded-lg px-2 py-1.5 fs-12 c-text outline-none focus-border-accent" />
+            <button onClick={addTrendProfile} className="px-2.5 py-1.5 rounded-lg c-bg-accent c-onaccent font-mono font-semibold"><Plus size={13} /></button>
+          </div>
+        </div>
+        <p className="fs-10 c-faint font-mono mt-2">Synced automatically every Sunday. No need to trigger anything manually.</p>
       </div>
 
       <div className="border-t c-border pt-6">
@@ -5076,6 +5127,551 @@ function TrendScraper({ models, persistModels, restrictModel }) {
   );
 }
 
+// ---------- reel sorter (ported inline, no separate file / iframe) ----------
+
+const REEL_SORTER_CSS = `
+.reel-sorter-root{
+  --rs-panel:#0e1310; --rs-panel-2:#0a0f0c; --rs-line:#173425;
+  --rs-text:#f2f5f0; --rs-text-dim:#6b8074; --rs-accent:#12b34c; --rs-ok:#39e673;
+  font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  color:var(--rs-text);
+}
+.reel-sorter-root *{box-sizing:border-box;}
+.reel-sorter-root .rs-display{ font-family:"Inter",system-ui,sans-serif; font-weight:800; letter-spacing:-0.01em; }
+.reel-sorter-root header{ padding:18px 28px 12px; border-bottom:1px solid var(--rs-line); }
+.reel-sorter-root header h1{ font-size:24px; margin:0 0 4px; }
+.reel-sorter-root header p{ margin:0; color:var(--rs-text-dim); font-size:13px; max-width:560px; display:none; }
+.reel-sorter-root header .sprocket{ display:none; }
+.reel-sorter-root.setup-mode header p, .reel-sorter-root.setup-mode header .sprocket{ display:block; }
+.reel-sorter-root .sprocket{ height:10px; margin-top:12px; background-image:radial-gradient(circle, var(--rs-line) 2.5px, transparent 2.6px); background-size:22px 14px; opacity:0.9; }
+.reel-sorter-root .rs-setup{ max-width:520px; margin:28px auto 0; padding:0 20px; }
+.reel-sorter-root .rs-panel{ background:var(--rs-panel); border:1px solid var(--rs-line); border-radius:10px; padding:18px; }
+.reel-sorter-root .rs-panel h2{ font-size:13px; text-transform:uppercase; letter-spacing:0.1em; color:var(--rs-text-dim); margin:0 0 12px; }
+.reel-sorter-root textarea{ width:100%; min-height:150px; background:var(--rs-panel-2); border:1px solid var(--rs-line); border-radius:8px; color:var(--rs-text); padding:10px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; resize:vertical; }
+.reel-sorter-root textarea:focus{ outline:2px solid var(--rs-accent); outline-offset:1px; }
+.reel-sorter-root button{ font-family:inherit; cursor:pointer; border:none; border-radius:7px; font-size:13px; padding:9px 14px; transition:transform 0.08s ease, background 0.15s ease; }
+.reel-sorter-root button:focus-visible{ outline:2px solid var(--rs-accent); outline-offset:2px; }
+.reel-sorter-root button:active{ transform:scale(0.97); }
+.reel-sorter-root button:disabled{ opacity:0.35; cursor:not-allowed; }
+.reel-sorter-root .btn-primary{ background:var(--rs-accent); color:#04140c; font-weight:600; }
+.reel-sorter-root .btn-primary:hover:not(:disabled){ background:#39e673; }
+.reel-sorter-root .btn-ghost{ background:transparent; color:var(--rs-text-dim); border:1px solid var(--rs-line); }
+.reel-sorter-root .btn-ghost:hover:not(:disabled){ color:var(--rs-text); border-color:#2a4a37; }
+.reel-sorter-root .btn-block{ width:100%; margin-top:10px; }
+.reel-sorter-root .cat-manager{ margin-top:18px; }
+.reel-sorter-root .cat-list{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.reel-sorter-root .cat-tag{ font-size:12px; padding:5px 10px; border-radius:20px; background:var(--rs-panel-2); border:1px solid var(--rs-line); color:var(--rs-text-dim); }
+.reel-sorter-root .add-cat-row{ display:flex; gap:6px; }
+.reel-sorter-root .add-cat-row input{ flex:1; background:var(--rs-panel-2); border:1px solid var(--rs-line); border-radius:7px; color:var(--rs-text); padding:8px 10px; font-size:13px; }
+.reel-sorter-root .add-cat-row input:focus{ outline:2px solid var(--rs-accent); outline-offset:1px; }
+.reel-sorter-root .stage-wrap{ display:none; max-width:420px; margin:14px auto 30px; padding:0 20px; }
+.reel-sorter-root .progress-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.reel-sorter-root .progress-text{ font-size:13px; color:var(--rs-text-dim); }
+.reel-sorter-root .progress-text b{ color:var(--rs-text); }
+.reel-sorter-root .progress-bar{ height:4px; background:var(--rs-panel-2); border-radius:4px; overflow:hidden; margin-top:6px; }
+.reel-sorter-root .progress-bar-fill{ height:100%; background:var(--rs-accent); width:0%; transition:width 0.2s ease; }
+.reel-sorter-root .stage-card{ background:var(--rs-panel); border:1px solid var(--rs-line); border-radius:12px; padding:14px; }
+.reel-sorter-root .stage-embed{ background:#000; border-radius:8px; display:flex; align-items:center; justify-content:center; margin:0 auto 10px; max-width:280px; }
+.reel-sorter-root .stage-embed iframe, .reel-sorter-root .stage-embed blockquote{ max-width:100% !important; }
+.reel-sorter-root .stage-url{ font-size:11px; color:var(--rs-text-dim); word-break:break-all; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; margin-bottom:6px; text-align:center; }
+.reel-sorter-root .stage-current-cat{ font-size:13px; margin-bottom:8px; min-height:18px; text-align:center; }
+.reel-sorter-root .stage-current-cat b{ color:var(--rs-ok); }
+.reel-sorter-root .stage-current-cat.empty b{ color:var(--rs-text-dim); font-weight:400; }
+.reel-sorter-root .cat-buttons{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; justify-content:center; }
+.reel-sorter-root .cat-btn{ font-size:12px; padding:7px 12px; border-radius:20px; background:var(--rs-panel-2); border:1px solid var(--rs-line); color:var(--rs-text-dim); }
+.reel-sorter-root .cat-btn:hover{ border-color:var(--rs-accent); color:var(--rs-text); }
+.reel-sorter-root .cat-btn.active{ background:var(--rs-accent); border-color:var(--rs-accent); color:#04140c; font-weight:600; }
+.reel-sorter-root .stage-nav{ display:flex; gap:10px; align-items:center; justify-content:space-between; border-top:1px solid var(--rs-line); padding-top:10px; }
+.reel-sorter-root .stage-nav-left{ display:flex; gap:8px; }
+.reel-sorter-root .remove-current{ background:transparent; color:var(--rs-text-dim); font-size:12px; border:none; }
+.reel-sorter-root .remove-current:hover{ color:var(--rs-accent); }
+.reel-sorter-root .done-screen{ text-align:center; padding:60px 20px; background:var(--rs-panel); border:1px solid var(--rs-line); border-radius:12px; }
+.reel-sorter-root .done-screen h2{ margin:0 0 8px; }
+.reel-sorter-root .done-screen p{ color:var(--rs-text-dim); margin:0 0 20px; font-size:14px; }
+.reel-sorter-root .list-toggle{ margin-top:14px; text-align:center; }
+.reel-sorter-root .list-view{ margin-top:14px; border-top:1px solid var(--rs-line); padding-top:14px; display:none; }
+.reel-sorter-root .list-view.open{ display:block; }
+.reel-sorter-root .list-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--rs-line); font-size:12px; }
+.reel-sorter-root .list-row .lurl{ color:var(--rs-text-dim); word-break:break-all; flex:1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.reel-sorter-root .list-row .lcat{ color:var(--rs-ok); white-space:nowrap; }
+.reel-sorter-root .list-row .lcat.empty{ color:var(--rs-text-dim); }
+.reel-sorter-root .list-row button{ padding:4px 10px; font-size:11px; }
+.reel-sorter-root .modal-overlay{ position:absolute; inset:0; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; padding:24px; z-index:50; }
+.reel-sorter-root .modal-overlay.open{ display:flex; }
+.reel-sorter-root .modal{ background:var(--rs-panel); border:1px solid var(--rs-line); border-radius:12px; max-width:640px; width:100%; max-height:80vh; display:flex; flex-direction:column; padding:20px; }
+.reel-sorter-root .modal h2{ margin:0 0 4px; font-size:18px; }
+.reel-sorter-root .modal .sub{ color:var(--rs-text-dim); font-size:13px; margin-bottom:14px; }
+.reel-sorter-root .modal textarea{ flex:1; min-height:320px; font-size:12px; }
+.reel-sorter-root .modal-actions{ display:flex; gap:10px; margin-top:14px; }
+.reel-sorter-root .modal-close{ align-self:flex-end; background:transparent; color:var(--rs-text-dim); border:none; font-size:20px; line-height:1; padding:0 4px; }
+.reel-sorter-root .modal-top{ display:flex; justify-content:space-between; align-items:flex-start; }
+`;
+
+const REEL_SORTER_BODY = `
+<header>
+  <p>Vlož odkazy na Reels, mrkni na živý náhled a jedním klikem přiřaď kategorii. Po každém kliknutí naskočí další Reel. Na konci vyexportuješ roztříděný seznam.</p>
+  <div class="sprocket"></div>
+</header>
+
+<div class="rs-setup" id="rsSetupPanel">
+  <div class="rs-panel">
+    <h2>Vstup</h2>
+    <textarea id="rsUrlInput" placeholder="https://www.instagram.com/reel/AbC123.../
+https://www.instagram.com/reel/XyZ456.../
+...jeden odkaz na řádek"></textarea>
+    <button class="btn-primary btn-block" id="rsLoadBtn">Spustit</button>
+    <div class="cat-manager">
+      <h2>Kategorie</h2>
+      <div class="cat-list" id="rsCatList"></div>
+      <div class="add-cat-row">
+        <input type="text" id="rsNewCatInput" placeholder="Nová kategorie...">
+        <button class="btn-ghost" id="rsAddCatBtn">Přidat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stage-wrap" id="rsStageWrap">
+  <div class="progress-row">
+    <div class="progress-text" id="rsProgressText">0 / 0</div>
+    <button class="btn-ghost" id="rsExportBtn">Zobrazit výsledek</button>
+  </div>
+  <div class="progress-bar"><div class="progress-bar-fill" id="rsProgressFill"></div></div>
+  <div id="rsStageContent" style="margin-top:16px;"></div>
+  <div class="list-toggle">
+    <button class="btn-ghost" id="rsListToggleBtn">Zobrazit celý seznam</button>
+  </div>
+  <div class="list-view" id="rsListView"></div>
+</div>
+
+<div class="modal-overlay" id="rsModalOverlay">
+  <div class="modal">
+    <div class="modal-top">
+      <div>
+        <h2>Roztříděný seznam</h2>
+        <div class="sub">Seskupeno podle kategorie, připraveno ke zkopírování.</div>
+      </div>
+      <button class="modal-close" id="rsModalCloseBtn">&times;</button>
+    </div>
+    <textarea id="rsResultText" readonly></textarea>
+    <div class="modal-actions">
+      <button class="btn-primary" style="margin-top:0; flex:1;" id="rsCopyBtn">Zkopírovat</button>
+      <button class="btn-ghost" id="rsDownloadBtn">Stáhnout .txt</button>
+    </div>
+  </div>
+</div>
+`;
+
+function ReelSorterPage() {
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    // Load Instagram's embed script once (shared across the whole app / repeat visits)
+    if (!window.instgrm && !document.querySelector('script[src="https://www.instagram.com/embed.js"]')) {
+      const s = document.createElement("script");
+      s.src = "https://www.instagram.com/embed.js";
+      s.async = true;
+      document.body.appendChild(s);
+    }
+
+    const DEFAULT_CATEGORIES = ["Text on screen", "POV skit", "Talking head", "Omegle", "Ragebait", "Half text format", "Ostatní"];
+    let categories = DEFAULT_CATEGORIES.slice();
+    let items = [];
+    let seq = 0;
+    let currentIndex = 0;
+
+    const setupPanel = root.querySelector("#rsSetupPanel");
+    const urlInput = root.querySelector("#rsUrlInput");
+    const loadBtn = root.querySelector("#rsLoadBtn");
+    const catListEl = root.querySelector("#rsCatList");
+    const newCatInput = root.querySelector("#rsNewCatInput");
+    const addCatBtn = root.querySelector("#rsAddCatBtn");
+
+    const stageWrap = root.querySelector("#rsStageWrap");
+    const stageContent = root.querySelector("#rsStageContent");
+    const progressText = root.querySelector("#rsProgressText");
+    const progressFill = root.querySelector("#rsProgressFill");
+    const exportBtn = root.querySelector("#rsExportBtn");
+    const listToggleBtn = root.querySelector("#rsListToggleBtn");
+    const listView = root.querySelector("#rsListView");
+
+    const modalOverlay = root.querySelector("#rsModalOverlay");
+    const modalCloseBtn = root.querySelector("#rsModalCloseBtn");
+    const resultText = root.querySelector("#rsResultText");
+    const copyBtn = root.querySelector("#rsCopyBtn");
+    const downloadBtn = root.querySelector("#rsDownloadBtn");
+
+    function renderCatList() {
+      catListEl.innerHTML = "";
+      categories.forEach((c) => {
+        const tag = document.createElement("span");
+        tag.className = "cat-tag";
+        tag.textContent = c;
+        catListEl.appendChild(tag);
+      });
+    }
+
+    function normalizeUrl(raw) {
+      let u = raw.trim();
+      if (!u) return null;
+      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+      u = u.split("?")[0].split("#")[0];
+      u = u.replace(/\/+$/, "") + "/";
+      return u;
+    }
+
+    function addCategory() {
+      const val = newCatInput.value.trim();
+      if (!val) return;
+      if (!categories.includes(val)) categories.push(val);
+      renderCatList();
+      newCatInput.value = "";
+      renderStage();
+    }
+
+    function loadUrls() {
+      const lines = urlInput.value.split("\n");
+      const existing = new Set(items.map((i) => i.url));
+      lines.forEach((line) => {
+        const url = normalizeUrl(line);
+        if (!url || existing.has(url)) return;
+        existing.add(url);
+        items.push({ id: ++seq, url, category: null });
+      });
+      if (items.length === 0) return;
+      setupPanel.style.display = "none";
+      stageWrap.style.display = "block";
+      root.classList.remove("setup-mode");
+      currentIndex = 0;
+      renderStage();
+    }
+
+    function processEmbeds() {
+      if (window.instgrm && window.instgrm.Embeds) window.instgrm.Embeds.process();
+    }
+
+    function checkEmbedLoaded(wrapEl, blockquoteEl, item) {
+      let tries = 0;
+      const interval = setInterval(() => {
+        tries++;
+        const hasIframe = wrapEl.querySelector("iframe");
+        if (hasIframe) {
+          const ph = wrapEl.querySelector(".embed-placeholder");
+          if (ph) ph.remove();
+          clearInterval(interval);
+          return;
+        }
+        if (tries >= 5) {
+          clearInterval(interval);
+          wrapEl.innerHTML =
+            '<div style="padding:26px 14px;text-align:center;color:var(--rs-text-dim);font-size:13px;">' +
+            "Náhled se nepodařilo načíst (soukromé, smazané nebo omezené video).<br><br>" +
+            '<a href="' + item.url + '" target="_blank" rel="noopener" style="color:var(--rs-accent);">Otevřít Reel v nové kartě ↗</a>' +
+            "</div>";
+        }
+      }, 300);
+    }
+
+    function updateProgress() {
+      const total = items.length;
+      const assigned = items.filter((i) => i.category).length;
+      progressText.innerHTML = `<b>${Math.min(currentIndex + 1, total)}</b> / ${total} &middot; zařazeno ${assigned}`;
+      progressFill.style.width = total ? (assigned / total) * 100 + "%" : "0%";
+    }
+
+    function goTo(index) {
+      if (index < 0) index = 0;
+      currentIndex = index;
+      renderStage();
+    }
+
+    function assignAndAdvance(item, cat) {
+      item.category = cat;
+      updateProgress();
+      setTimeout(() => {
+        if (currentIndex < items.length - 1) {
+          goTo(currentIndex + 1);
+        } else {
+          renderStage();
+        }
+      }, 220);
+    }
+
+    function renderStage() {
+      updateProgress();
+      stageContent.innerHTML = "";
+
+      if (items.length === 0) return;
+
+      if (currentIndex >= items.length) {
+        const done = document.createElement("div");
+        done.className = "done-screen";
+        const assigned = items.filter((i) => i.category).length;
+        done.innerHTML = `
+          <h2 class="rs-display">Hotovo</h2>
+          <p>Zařazeno ${assigned} z ${items.length}. Můžeš zobrazit výsledek, nebo se vrátit a doplnit zbytek.</p>
+        `;
+        const btnRow = document.createElement("div");
+        btnRow.style.display = "flex";
+        btnRow.style.gap = "10px";
+        btnRow.style.justifyContent = "center";
+        const backBtn = document.createElement("button");
+        backBtn.className = "btn-ghost";
+        backBtn.textContent = "Zpět na poslední";
+        backBtn.addEventListener("click", () => goTo(items.length - 1));
+        const resultBtn = document.createElement("button");
+        resultBtn.className = "btn-primary";
+        resultBtn.textContent = "Zobrazit výsledek";
+        resultBtn.addEventListener("click", openResults);
+        btnRow.appendChild(backBtn);
+        btnRow.appendChild(resultBtn);
+        done.appendChild(btnRow);
+        stageContent.appendChild(done);
+        renderListView();
+        return;
+      }
+
+      const item = items[currentIndex];
+      const card = document.createElement("div");
+      card.className = "stage-card";
+
+      const embedWrap = document.createElement("div");
+      embedWrap.className = "stage-embed";
+      embedWrap.style.minHeight = "160px";
+      embedWrap.style.width = "100%";
+      const placeholder = document.createElement("div");
+      placeholder.className = "embed-placeholder";
+      placeholder.style.color = "var(--rs-text-dim)";
+      placeholder.style.fontSize = "13px";
+      placeholder.textContent = "Načítám náhled...";
+      embedWrap.appendChild(placeholder);
+      const blockquote = document.createElement("blockquote");
+      blockquote.className = "instagram-media";
+      blockquote.setAttribute("data-instgrm-permalink", item.url);
+      blockquote.setAttribute("data-instgrm-version", "14");
+      blockquote.style.width = "100%";
+      blockquote.style.margin = "0";
+      embedWrap.appendChild(blockquote);
+      card.appendChild(embedWrap);
+      checkEmbedLoaded(embedWrap, blockquote, item);
+
+      const manualLink = document.createElement("a");
+      manualLink.href = item.url;
+      manualLink.target = "_blank";
+      manualLink.rel = "noopener";
+      manualLink.textContent = "Nejde přehrát? Otevřít v Instagramu ↗";
+      manualLink.style.display = "block";
+      manualLink.style.textAlign = "center";
+      manualLink.style.fontSize = "11px";
+      manualLink.style.color = "var(--rs-text-dim)";
+      manualLink.style.margin = "4px 0 10px";
+      card.appendChild(manualLink);
+
+      const urlLine = document.createElement("div");
+      urlLine.className = "stage-url";
+      urlLine.textContent = item.url;
+      card.appendChild(urlLine);
+
+      const currentCat = document.createElement("div");
+      currentCat.className = "stage-current-cat" + (item.category ? "" : " empty");
+      currentCat.innerHTML = item.category ? `Zařazeno: <b>${item.category}</b>` : "Zatím nezařazeno, vyber kategorii";
+      card.appendChild(currentCat);
+
+      const catRow = document.createElement("div");
+      catRow.className = "cat-buttons";
+      categories.forEach((cat) => {
+        const btn = document.createElement("button");
+        btn.className = "cat-btn" + (item.category === cat ? " active" : "");
+        btn.textContent = cat;
+        btn.addEventListener("click", () => assignAndAdvance(item, cat));
+        catRow.appendChild(btn);
+      });
+      card.appendChild(catRow);
+
+      const nav = document.createElement("div");
+      nav.className = "stage-nav";
+      const navLeft = document.createElement("div");
+      navLeft.className = "stage-nav-left";
+      const prevBtn = document.createElement("button");
+      prevBtn.className = "btn-ghost";
+      prevBtn.textContent = "← Zpět";
+      prevBtn.disabled = currentIndex === 0;
+      prevBtn.addEventListener("click", () => goTo(currentIndex - 1));
+      const skipBtn = document.createElement("button");
+      skipBtn.className = "btn-ghost";
+      skipBtn.textContent = "Přeskočit";
+      skipBtn.addEventListener("click", () => goTo(currentIndex + 1));
+      navLeft.appendChild(prevBtn);
+      navLeft.appendChild(skipBtn);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-current";
+      removeBtn.textContent = "Odstranit tento odkaz";
+      removeBtn.addEventListener("click", () => {
+        items.splice(currentIndex, 1);
+        if (currentIndex >= items.length) currentIndex = Math.max(0, items.length - 1);
+        renderStage();
+      });
+
+      nav.appendChild(navLeft);
+      nav.appendChild(removeBtn);
+      card.appendChild(nav);
+
+      stageContent.appendChild(card);
+      renderListView();
+      setTimeout(processEmbeds, 50);
+    }
+
+    function renderListView() {
+      listView.innerHTML = "";
+      items.forEach((item, idx) => {
+        const row = document.createElement("div");
+        row.className = "list-row";
+        const url = document.createElement("span");
+        url.className = "lurl";
+        url.textContent = item.url;
+        const cat = document.createElement("span");
+        cat.className = "lcat" + (item.category ? "" : " empty");
+        cat.textContent = item.category || "nezařazeno";
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn-ghost";
+        editBtn.textContent = "Upravit";
+        editBtn.addEventListener("click", () => goTo(idx));
+        row.appendChild(url);
+        row.appendChild(cat);
+        row.appendChild(editBtn);
+        listView.appendChild(row);
+      });
+    }
+
+    function buildResultText() {
+      const groups = {};
+      categories.forEach((c) => (groups[c] = []));
+      const unassigned = [];
+      items.forEach((item) => {
+        if (item.category) {
+          if (!groups[item.category]) groups[item.category] = [];
+          groups[item.category].push(item.url);
+        } else {
+          unassigned.push(item.url);
+        }
+      });
+      let out = "";
+      categories.forEach((cat) => {
+        const list = groups[cat] || [];
+        if (list.length === 0) return;
+        out += `## ${cat} (${list.length})\n`;
+        list.forEach((u) => (out += u + "\n"));
+        out += "\n";
+      });
+      if (unassigned.length) {
+        out += `## Nezařazeno (${unassigned.length})\n`;
+        unassigned.forEach((u) => (out += u + "\n"));
+      }
+      return out.trim() || "Zatím nic k exportu.";
+    }
+
+    function openResults() {
+      resultText.value = buildResultText();
+      modalOverlay.classList.add("open");
+    }
+
+    loadBtn.addEventListener("click", loadUrls);
+    addCatBtn.addEventListener("click", addCategory);
+    newCatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addCategory(); });
+    exportBtn.addEventListener("click", openResults);
+    listToggleBtn.addEventListener("click", () => {
+      listView.classList.toggle("open");
+      listToggleBtn.textContent = listView.classList.contains("open") ? "Skrýt seznam" : "Zobrazit celý seznam";
+    });
+    modalCloseBtn.addEventListener("click", () => modalOverlay.classList.remove("open"));
+    modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove("open"); });
+    copyBtn.addEventListener("click", () => {
+      resultText.select();
+      document.execCommand("copy");
+      copyBtn.textContent = "Zkopírováno!";
+      setTimeout(() => (copyBtn.textContent = "Zkopírovat"), 1500);
+    });
+    downloadBtn.addEventListener("click", () => {
+      const blob = new Blob([resultText.value], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "reel-sorter-vysledek.txt";
+      a.click();
+    });
+
+    renderCatList();
+  }, []);
+
+  return (
+    <div ref={rootRef} className="reel-sorter-root setup-mode" style={{ position: "relative", minHeight: "70vh" }}>
+      <style>{REEL_SORTER_CSS}</style>
+      <div dangerouslySetInnerHTML={{ __html: REEL_SORTER_BODY }} />
+    </div>
+  );
+}
+
+// ---------- weekly trends (auto-scraped every Sunday from tracked profiles) ----------
+
+function TrendsPage({ weeklyTrendReels }) {
+  const fmt = (n) => (!n ? "0" : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
+  const sorted = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  const lastSync = sorted.reduce((latest, r) => (r.syncedAt && (!latest || r.syncedAt > latest) ? r.syncedAt : latest), null);
+
+  return (
+    <div>
+      <div className="c-bg-surface border c-border rounded-xl p-4 mb-5">
+        <p className="fs-11 c-muted">
+          Auto-scraped every Sunday from the profiles you track in <span className="c-text">Settings → Trend profiles</span>. Nothing to click here — just check back weekly for fresh ideas.
+        </p>
+        {lastSync && <p className="fs-10 c-faint font-mono mt-2">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
+      </div>
+
+      {sorted.length === 0 && (
+        <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
+          No trends synced yet. Add profiles in Settings, and check back after the next Sunday scan.
+        </div>
+      )}
+
+      {sorted.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {sorted.map((post, i) => (
+            <div key={post.id || i}
+              className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
+              {(post.videoUrl || post.displayUrl) && (
+                <div className="relative w-full bg-black" style={{ paddingTop: "56.25%" }}>
+                  {post.videoUrl ? (
+                    <video src={post.videoUrl} poster={post.displayUrl} controls muted playsInline preload="none"
+                      className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <img src={post.displayUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  )}
+                  <div className="absolute top-2 right-2 c-bg-accent c-onaccent fs-9 font-mono font-bold px-1.5 py-0.5 rounded-lg" style={{ pointerEvents: "none" }}>{(post.ratio || 0).toFixed(1)}x avg</div>
+                  <div className="absolute top-2 left-2 fs-10 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", pointerEvents: "none" }}>@{post.username || post.profile}</div>
+                </div>
+              )}
+              <div className="p-3">
+                <div className="flex gap-3 fs-12 font-mono mb-1">
+                  <span className="flex items-center gap-1 c-text"><Eye size={12} />{fmt(post.videoViewCount)}</span>
+                  <span style={{ color: "#E1306C" }}>&#9829; {fmt(post.likesCount)}</span>
+                </div>
+                {post.caption && <div className="fs-11 c-muted leading-snug mb-1.5" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.caption}</div>}
+                <div className="flex items-center justify-between">
+                  {post.timestamp && <div className="fs-10 c-faint font-mono">{new Date(post.timestamp).toLocaleDateString("en-US")}</div>}
+                  <a href={post.url} target="_blank" rel="noopener noreferrer" className="fs-10 c-accent hover-accent-text font-mono">Open on Instagram →</a>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- app shell ----------
 
 const NAV_ADMIN = [
@@ -5085,6 +5681,8 @@ const NAV_ADMIN = [
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "stats", label: "Stats", icon: TrendingUp },
   { id: "viral", label: "Viral Feed", icon: Zap },
+  { id: "weeklytrends", label: "Trends", icon: Flame },
+  { id: "reelsorter", label: "Reels Sorter", icon: Repeat },
   { id: "neo", label: "Neo", icon: Sparkles },
   { id: "models", label: "Model Manager", icon: Users },
   { id: "settings", label: "Settings", icon: Settings },
@@ -5156,6 +5754,8 @@ function App() {
   const { value: ofDailyStats, loading: ofDailyStatsLoading } = useSupaOfDailyStats();
   const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
+  const { value: trendProfiles, loading: trendProfilesLoading, persist: persistTrendProfiles } = useSupaTable("trend_profiles", "id", [], trendProfilesToJS, trendProfilesToDB);
+  const { value: weeklyTrendReels, loading: weeklyTrendReelsLoading } = useSupaTable("weekly_trend_reels", "id", [], weeklyTrendReelsToJS, weeklyTrendReelsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
   const [showLanding, setShowLanding] = useState(true);
   const [view, setView] = useState(null);
@@ -5373,13 +5973,15 @@ function App() {
             {currentView === "viral" && (isAdmin
               ? <TrendScraper models={agencyModels} persistModels={scopedPersistModels} />
               : <TrendScraper models={models} persistModels={persistModels} restrictModel={restrictModel} />)}
+            {currentView === "reelsorter" && isAdmin && <ReelSorterPage />}
+            {currentView === "weeklytrends" && isAdmin && <TrendsPage weeklyTrendReels={weeklyTrendReels} />}
             {currentView === "neo" && <NeoPage agency={session.agency} session={session} onNavigate={setView}
               onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
               cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} />}
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "settings" && (isAdmin
-              ? <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />
+              ? <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} trendProfiles={trendProfiles} persistTrendProfiles={persistTrendProfiles} />
               : <CreatorSettingsPanel model={models.find((m) => m.name === session.name)} persistModels={persistModels} models={models} />)}
           </main>
         </div>
