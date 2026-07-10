@@ -4967,6 +4967,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
   const [profileCount, setProfileCount] = React.useState(0);
   const [error, setError] = React.useState("");
   const [threshold, setThreshold] = React.useState(1.5);
+  const [topN, setTopN] = React.useState(15);
   const [addingHandle, setAddingHandle] = React.useState("");
 
   const model = scopedModels.find(m => m.name === selectedModel);
@@ -5011,7 +5012,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
         });
       });
       viral.sort((a, b) => b._ratio - a._ratio);
-      setResults(viral);
+      setResults(viral.slice(0, topN));
     } catch (e) { setError(e.message); }
     setScraping(false);
   };
@@ -5024,11 +5025,20 @@ function TrendScraper({ models, persistModels, restrictModel }) {
       <div className="c-bg-surface border c-border rounded-xl p-4 mb-5 flex flex-wrap gap-3 items-center justify-end">
         <div className="w-full">
           <div className="fs-10 c-muted font-mono uppercase mb-2">Viral threshold — post is viral if it beats the profile average by</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-4">
             {[1.5, 2, 2.5, 3].map(t => (
               <button key={t} onClick={() => setThreshold(t)}
                 className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${threshold === t ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
                 {t}x
+              </button>
+            ))}
+          </div>
+          <div className="fs-10 c-muted font-mono uppercase mb-2">How many reels</div>
+          <div className="flex flex-wrap gap-2">
+            {[10, 15, 20, 30].map(n => (
+              <button key={n} onClick={() => setTopN(n)}
+                className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${topN === n ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+                Top {n}
               </button>
             ))}
           </div>
