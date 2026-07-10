@@ -1316,7 +1316,13 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
               <span className="fs-11 font-mono c-muted">OnlyFans</span>
             </div>
             {model.onlyfansAccountId ? (
-              <span className="fs-11 font-mono c-success">Connected — {model.onlyfansUsername || model.onlyfansAccountId}</span>
+              <div className="flex items-center gap-2">
+                <span className="fs-11 font-mono c-success">Connected — {model.onlyfansUsername || model.onlyfansAccountId}</span>
+                <button onClick={() => { if (confirm("Disconnect OnlyFans for " + model.name + "?")) persistModels(models.map((m) => (m.name === model.name ? { ...m, onlyfansAccountId: "", onlyfansUsername: "" } : m))); }}
+                  className="tap fs-9 font-mono uppercase px-2 py-1 rounded-lg border c-border c-muted hover-warn">
+                  Disconnect
+                </button>
+              </div>
             ) : (
               <button onClick={connectOnlyFans} disabled={connecting}
                 className="tap fs-10 font-mono uppercase px-2.5 py-1 rounded-lg c-bg-accent c-onaccent font-semibold disabled:opacity-60">
