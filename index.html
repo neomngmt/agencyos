@@ -712,20 +712,22 @@ const reelsToDB = (r) => ({
   created_at: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
 });
 
-const trendProfilesToJS = (r) => ({ id: r.id, igHandle: r.ig_handle || "" });
-const trendProfilesToDB = (r) => ({ id: r.id, ig_handle: r.igHandle || "" });
+const TREND_CATEGORIES = ["Talking head", "POV skit", "Text on screen", "Omegle", "Ragebait", "Half text format", "Other"];
+
+const trendProfilesToJS = (r) => ({ id: r.id, igHandle: r.ig_handle || "", category: r.category || "Other" });
+const trendProfilesToDB = (r) => ({ id: r.id, ig_handle: r.igHandle || "", category: r.category || "Other" });
 
 const weeklyTrendReelsToJS = (r) => ({
   id: r.id, profile: r.profile || "", url: r.url || "", displayUrl: r.display_url || "",
   videoUrl: r.video_url || "", username: r.username || "", likesCount: r.likes_count || 0,
   videoViewCount: r.video_view_count || 0, caption: r.caption || "", ratio: r.ratio || 0,
-  timestamp: r.timestamp || null, syncedAt: r.synced_at || null,
+  category: r.category || "Other", timestamp: r.timestamp || null, syncedAt: r.synced_at || null,
 });
 const weeklyTrendReelsToDB = (r) => ({
   id: r.id, profile: r.profile || "", url: r.url || "", display_url: r.displayUrl || "",
   video_url: r.videoUrl || "", username: r.username || "", likes_count: r.likesCount || 0,
   video_view_count: r.videoViewCount || 0, caption: r.caption || "", ratio: r.ratio || 0,
-  timestamp: r.timestamp || null, synced_at: r.syncedAt || new Date().toISOString(),
+  category: r.category || "Other", timestamp: r.timestamp || null, synced_at: r.syncedAt || new Date().toISOString(),
 });
 
 const trendsToJS = (r) => ({
@@ -3229,18 +3231,10 @@ function CreatorSettingsPanel({ model, persistModels, models }) {
   );
 }
 
-function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency, trendProfiles, persistTrendProfiles }) {
+function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency }) {
   const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
   const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
   const [saved, setSaved] = useState(false);
-  const [newTrendHandle, setNewTrendHandle] = useState("");
-  const addTrendProfile = () => {
-    const handle = newTrendHandle.trim().replace(/https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\//g, "").replace(/^@/, "");
-    if (!handle) return;
-    persistTrendProfiles([...(trendProfiles || []), { id: Math.random().toString(36).slice(2), igHandle: handle }]);
-    setNewTrendHandle("");
-  };
-  const removeTrendProfile = (id) => persistTrendProfiles((trendProfiles || []).filter((p) => p.id !== id));
   const save = async () => {
     await persistSettings({
       ...settings,
@@ -3293,28 +3287,11 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
       <div className="border-t c-border pt-6 mb-8">
         <div className="flex items-center gap-2 mb-1.5">
           <Flame size={15} className="c-accent" />
-          <span className="text-sm c-text font-medium">Trend profiles</span>
+          <span className="text-sm c-text font-medium">Trends</span>
         </div>
-        <p className="c-muted text-xs mb-3">
-          IG profiles to scan every Sunday for viral ideas across the whole roster (not tied to any one model). Results show up in the "Trends" tab.
+        <p className="c-muted text-xs">
+          Which IG profiles get scanned every Sunday for the "Trends" tab is set directly in the <span className="c-text">weekly-trends-scrape</span> edge function code (TREND_PROFILES list) — not here. Edit that list in Supabase and redeploy to add/remove/recategorize profiles.
         </p>
-        <div className="c-bg-surface border c-border rounded-lg p-3 max-w-sm">
-          {(!trendProfiles || trendProfiles.length === 0) && <p className="fs-11 c-faint font-mono italic mb-2">None yet</p>}
-          <div className="space-y-1 mb-2">
-            {(trendProfiles || []).map((p) => (
-              <div key={p.id} className="flex items-center justify-between py-1 border-b c-border last:border-0">
-                <div className="flex items-center gap-1.5"><Instagram size={11} className="c-muted" /><span className="fs-12 c-text">@{p.igHandle}</span></div>
-                <button onClick={() => removeTrendProfile(p.id)} className="c-muted hover-warn ml-2"><X size={12} /></button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-1.5">
-            <input value={newTrendHandle} onChange={(e) => setNewTrendHandle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTrendProfile()} onBlur={addTrendProfile}
-              placeholder="@handle or link" className="flex-1 c-bg-app border c-border rounded-lg px-2 py-1.5 fs-12 c-text outline-none focus-border-accent" />
-            <button onClick={addTrendProfile} className="px-2.5 py-1.5 rounded-lg c-bg-accent c-onaccent font-mono font-semibold"><Plus size={13} /></button>
-          </div>
-        </div>
-        <p className="fs-10 c-faint font-mono mt-2">Synced automatically every Sunday. No need to trigger anything manually.</p>
       </div>
 
       <div className="border-t c-border pt-6">
@@ -5098,7 +5075,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
                     {(post.videoUrl || post.displayUrl) && (
                       <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
                         {post.videoUrl ? (
-                          <video src={post.videoUrl} poster={post.displayUrl} controls muted playsInline preload="none"
+                          <video src={post.videoUrl} poster={post.displayUrl} controls playsInline preload="none"
                             className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <img src={post.displayUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -5619,22 +5596,38 @@ function ReelSorterPage() {
 // ---------- weekly trends (auto-scraped every Sunday from tracked profiles) ----------
 
 function TrendsPage({ weeklyTrendReels }) {
+  const [filter, setFilter] = useState("all");
   const fmt = (n) => (!n ? "0" : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
-  const sorted = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  const lastSync = sorted.reduce((latest, r) => (r.syncedAt && (!latest || r.syncedAt > latest) ? r.syncedAt : latest), null);
+  const all = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  const sorted = filter === "all" ? all : all.filter((r) => (r.category || "Other") === filter);
+  const lastSync = all.reduce((latest, r) => (r.syncedAt && (!latest || r.syncedAt > latest) ? r.syncedAt : latest), null);
+  const counts = TREND_CATEGORIES.reduce((acc, c) => { acc[c] = all.filter((r) => (r.category || "Other") === c).length; return acc; }, {});
 
   return (
     <div>
       <div className="c-bg-surface border c-border rounded-xl p-4 mb-5">
         <p className="fs-11 c-muted">
-          Auto-scraped every Sunday from the profiles you track in <span className="c-text">Settings → Trend profiles</span>. Nothing to click here — just check back weekly for fresh ideas.
+          Auto-scraped every Sunday from the profiles tracked in the <span className="c-text">weekly-trends-scrape</span> edge function. Nothing to click here — just check back weekly for fresh ideas.
         </p>
         {lastSync && <p className="fs-10 c-faint font-mono mt-2">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
       </div>
 
+      <div className="flex flex-wrap gap-2 mb-5">
+        <button onClick={() => setFilter("all")}
+          className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${filter === "all" ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+          All ({all.length})
+        </button>
+        {TREND_CATEGORIES.map((c) => (
+          <button key={c} onClick={() => setFilter(c)}
+            className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${filter === c ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+            {c} ({counts[c] || 0})
+          </button>
+        ))}
+      </div>
+
       {sorted.length === 0 && (
         <div className="fs-12 c-faint font-mono italic py-16 text-center border border-dashed c-border rounded-xl">
-          No trends synced yet. Add profiles in Settings, and check back after the next Sunday scan.
+          {all.length === 0 ? "No trends synced yet. Add profiles in Settings, and check back after the next Sunday scan." : "Nothing in this category yet."}
         </div>
       )}
 
@@ -5646,13 +5639,14 @@ function TrendsPage({ weeklyTrendReels }) {
               {(post.videoUrl || post.displayUrl) && (
                 <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
                   {post.videoUrl ? (
-                    <video src={post.videoUrl} poster={post.displayUrl} controls muted playsInline preload="none"
+                    <video src={post.videoUrl} poster={post.displayUrl} controls playsInline preload="none"
                       className="absolute inset-0 w-full h-full object-cover" />
                   ) : (
                     <img src={post.displayUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
                   )}
                   <div className="absolute top-2 right-2 c-bg-accent c-onaccent fs-9 font-mono font-bold px-1.5 py-0.5 rounded-lg" style={{ pointerEvents: "none" }}>{(post.ratio || 0).toFixed(1)}x avg</div>
                   <div className="absolute top-2 left-2 fs-10 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", pointerEvents: "none" }}>@{post.username || post.profile}</div>
+                  <div className="absolute bottom-2 left-2 fs-9 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#39e673", pointerEvents: "none" }}>{post.category || "Other"}</div>
                 </div>
               )}
               <div className="p-3">
@@ -5756,7 +5750,6 @@ function App() {
   const { value: ofDailyStats, loading: ofDailyStatsLoading } = useSupaOfDailyStats();
   const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
-  const { value: trendProfiles, loading: trendProfilesLoading, persist: persistTrendProfiles } = useSupaTable("trend_profiles", "id", [], trendProfilesToJS, trendProfilesToDB);
   const { value: weeklyTrendReels, loading: weeklyTrendReelsLoading } = useSupaTable("weekly_trend_reels", "id", [], weeklyTrendReelsToJS, weeklyTrendReelsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
   const [showLanding, setShowLanding] = useState(true);
@@ -5977,7 +5970,7 @@ function App() {
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
             {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
             {currentView === "settings" && (isAdmin
-              ? <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} trendProfiles={trendProfiles} persistTrendProfiles={persistTrendProfiles} />
+              ? <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />
               : <CreatorSettingsPanel model={models.find((m) => m.name === session.name)} persistModels={persistModels} models={models} />)}
           </main>
         </div>
