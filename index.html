@@ -5091,12 +5091,12 @@ function TrendScraper({ models, persistModels, restrictModel }) {
           {results.length > 0 && (
             <>
               <div className="fs-11 c-muted font-mono mb-3"><span className="c-accent font-semibold">{results.length}</span> viral reels from {profileCount} profiles</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
                 {results.map((post, i) => (
                   <div key={post.url || i}
                     className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
                     {(post.videoUrl || post.displayUrl) && (
-                      <div className="relative w-full bg-black" style={{ paddingTop: "56.25%" }}>
+                      <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
                         {post.videoUrl ? (
                           <video src={post.videoUrl} poster={post.displayUrl} controls muted playsInline preload="none"
                             className="absolute inset-0 w-full h-full object-cover" />
@@ -5639,12 +5639,12 @@ function TrendsPage({ weeklyTrendReels }) {
       )}
 
       {sorted.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
           {sorted.map((post, i) => (
             <div key={post.id || i}
               className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
               {(post.videoUrl || post.displayUrl) && (
-                <div className="relative w-full bg-black" style={{ paddingTop: "56.25%" }}>
+                <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
                   {post.videoUrl ? (
                     <video src={post.videoUrl} poster={post.displayUrl} controls muted playsInline preload="none"
                       className="absolute inset-0 w-full h-full object-cover" />
