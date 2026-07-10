@@ -4363,8 +4363,10 @@ function GlobalSearch({ cards, tasks, models, trends, onNavigate, trendsNavId, s
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="tap p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
-        <Search size={16} />
+      <button onClick={() => setOpen((v) => !v)}
+        className="tap flex items-center gap-1.5 px-3 py-1.5 rounded-full border c-border c-muted hover-text-primary hover-bg-surface transition-colors">
+        <Search size={14} />
+        <span className="fs-12 font-mono">Search</span>
       </button>
       {open && (
         <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-80 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2">
@@ -5863,12 +5865,6 @@ function App() {
             trendsNavId={session.role === "admin" ? "trends" : "trending"} showModels={isAdmin} />
           {session.role === "admin" && (
             <AdminNotificationBell cards={scopedCards} tasks={scopedTasks} onNavigate={setView} />
-          )}
-          {session.role === "admin" && (
-            <button onClick={() => setView("settings")} title="Settings"
-              className="tap p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
-              <Settings size={15} />
-            </button>
           )}
           {session.role === "creator" && (
             <NotificationBell model={models.find((m) => m.name === session.name)} cards={cards} tasks={tasks} trends={trends}
