@@ -327,8 +327,8 @@ const TABLES = {
   },
   "pipeline:settings": {
     table: "settings", mode: "singleton",
-    toDb: (s) => ({ id: 1, admin_pin_cz: s.adminPinCZ || "", admin_pin_us: s.adminPinUS || "" }),
-    fromDb: (r) => ({ adminPinCZ: r.admin_pin_cz || "", adminPinUS: r.admin_pin_us || "" }),
+    toDb: (s) => ({ id: 1, admin_pin_cz: s.adminPinCZ || "", admin_pin_us: s.adminPinUS || "", infloww_api_key: s.inflowwApiKey || "" }),
+    fromDb: (r) => ({ adminPinCZ: r.admin_pin_cz || "", adminPinUS: r.admin_pin_us || "", inflowwApiKey: r.infloww_api_key || "" }),
   },
 };
 
@@ -583,7 +583,7 @@ function useSupaSettings(fallback) {
     try {
       const { data, error } = await supabaseClient.from("settings").select("*").eq("id", 1).maybeSingle();
       if (error) throw error;
-      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS } : fallback);
+      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS, inflowwApiKey: data.infloww_api_key || "" } : fallback);
     } catch (e) {
       console.error("load failed for settings", e);
       setValue(fallback);
@@ -596,7 +596,7 @@ function useSupaSettings(fallback) {
   const persist = async (next) => {
     setValue(next);
     try {
-      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS });
+      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS, infloww_api_key: next.inflowwApiKey || "" });
       if (error) throw error;
     } catch (e) {
       console.error("save failed for settings", e);
@@ -1185,35 +1185,6 @@ function ModelManager({ models, persistModels, cards, agency }) {
 }
 
 function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, models, persistModels }) {
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState("");
-
-  const connectOnlyFans = async () => {
-    setConnecting(true);
-    setConnectError("");
-    try {
-      const { data, error } = await supabaseClient.functions.invoke("of-client-session", { body: { modelName: model.name } });
-      if (error || !data?.clientSecret) {
-        const detail = data?.error || error?.message || "Couldn't start the connection.";
-        const raw = data?.raw ? ` — raw: ${JSON.stringify(data.raw)}` : "";
-        throw new Error(detail + raw);
-      }
-      const { startOnlyFansAuthentication } = await import("https://esm.sh/@onlyfansapi/auth");
-      startOnlyFansAuthentication(data.clientSecret, {
-        onSuccess: async (result) => {
-          await persistModels(models.map((m) => (m.name === model.name ? { ...m, onlyfansAccountId: result.accountId, onlyfansUsername: result.username || "" } : m)));
-          setConnecting(false);
-        },
-        onError: (err) => {
-          setConnectError(err?.message || "Connection failed.");
-          setConnecting(false);
-        },
-      });
-    } catch (e) {
-      setConnectError(e.message);
-      setConnecting(false);
-    }
-  };
   const [form, setForm] = useState(model);
   useEffect(() => setForm(model), [model]);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -1309,29 +1280,6 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
           <span className="fs-10 c-faint font-mono">password</span>
         </div>
 
-        <div className="c-bg-app border c-border rounded-lg px-3 py-2 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <DollarSign size={13} className="c-accent" />
-              <span className="fs-11 font-mono c-muted">OnlyFans</span>
-            </div>
-            {model.onlyfansAccountId ? (
-              <div className="flex items-center gap-2">
-                <span className="fs-11 font-mono c-success">Connected — {model.onlyfansUsername || model.onlyfansAccountId}</span>
-                <button onClick={() => { if (confirm("Disconnect OnlyFans for " + model.name + "?")) persistModels(models.map((m) => (m.name === model.name ? { ...m, onlyfansAccountId: "", onlyfansUsername: "" } : m))); }}
-                  className="tap fs-9 font-mono uppercase px-2 py-1 rounded-lg border c-border c-muted hover-warn">
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button onClick={connectOnlyFans} disabled={connecting}
-                className="tap fs-10 font-mono uppercase px-2.5 py-1 rounded-lg c-bg-accent c-onaccent font-semibold disabled:opacity-60">
-                {connecting ? "Opening…" : "Connect for her"}
-              </button>
-            )}
-          </div>
-          {connectError && <p className="fs-9 c-warn font-mono mt-1.5">{connectError}</p>}
-        </div>
         <label className="flex items-center gap-1.5 fs-10 font-mono uppercase c-faint mb-4 cursor-pointer">
           <input type="checkbox" checked={!!model.alwaysOnboard} onChange={() => onToggleAlwaysOnboard(model.name)} />
           Always show Creator Bible on login (testing)
@@ -3248,68 +3196,19 @@ const STATUS_STYLES = {
 };
 
 function CreatorSettingsPanel({ model, persistModels, models }) {
-  const connected = !!model?.onlyfansAccountId;
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState("");
-
-  const connectOnlyFans = async () => {
-    setConnecting(true);
-    setConnectError("");
-    try {
-      const { data, error } = await supabaseClient.functions.invoke("of-client-session", { body: { modelName: model.name } });
-      if (error || !data?.clientSecret) {
-        const detail = data?.error || error?.message || "Couldn't start the connection.";
-        const raw = data?.raw ? ` — raw: ${JSON.stringify(data.raw)}` : "";
-        throw new Error(detail + raw);
-      }
-      const { startOnlyFansAuthentication } = await import("https://esm.sh/@onlyfansapi/auth");
-      startOnlyFansAuthentication(data.clientSecret, {
-        onSuccess: async (result) => {
-          await persistModels(models.map((m) => (m.name === model.name ? { ...m, onlyfansAccountId: result.accountId, onlyfansUsername: result.username || "" } : m)));
-          setConnecting(false);
-        },
-        onError: (err) => {
-          setConnectError(err?.message || "Connection failed.");
-          setConnecting(false);
-        },
-      });
-    } catch (e) {
-      setConnectError(e.message);
-      setConnecting(false);
-    }
-  };
-
   return (
     <div className="max-w-lg">
       <p className="fs-12 c-faint font-mono mb-6">Your personal account connections.</p>
 
       <div className="c-bg-surface border c-border rounded-xl p-5">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <DollarSign size={16} className="c-accent" />
-            <span className="font-semibold c-text text-sm">OnlyFans</span>
-          </div>
-          <Badge color={connected ? "#39e673" : "#5c6e65"}>{connected ? "Connected" : "Not connected"}</Badge>
+        <div className="flex items-center gap-2 mb-2">
+          <Sparkles size={16} className="c-accent" />
+          <span className="font-semibold c-text text-sm">Nothing to connect here</span>
         </div>
-        <p className="fs-11 c-muted mb-4">
-          Connect your OnlyFans account so your earnings and subscriber stats show up automatically on your dashboard. You'll log in through OnlyFans' own secure window — the agency never sees or stores your OnlyFans password.
+        <p className="fs-11 c-muted">
+          Your OnlyFans, Instagram, X, and TikTok stats are all connected by your agency team on their end — you don't need to do anything for those.
         </p>
-        {connected ? (
-          <div className="fs-11 font-mono c-faint">Linked account: <span className="c-text">{model.onlyfansUsername || model.onlyfansAccountId}</span></div>
-        ) : (
-          <>
-            <button onClick={connectOnlyFans} disabled={connecting}
-              className="tap w-full py-2.5 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2 disabled:opacity-60">
-              {connecting ? "Opening secure window…" : "Connect OnlyFans"}
-            </button>
-            {connectError && <p className="fs-10 c-warn font-mono mt-2">{connectError}</p>}
-          </>
-        )}
       </div>
-
-      <p className="fs-10 c-faint font-mono mt-4">
-        Your Instagram, X, and TikTok stats are connected by your agency team on their end — you don't need to do anything for those.
-      </p>
     </div>
   );
 }
@@ -3318,6 +3217,9 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
   const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
   const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
   const [saved, setSaved] = useState(false);
+  const [inflowwKey, setInflowwKey] = useState(settings.inflowwApiKey || "");
+  const [showInflowwKey, setShowInflowwKey] = useState(false);
+  const [inflowwSaved, setInflowwSaved] = useState(false);
   const save = async () => {
     await persistSettings({
       ...settings,
@@ -3326,6 +3228,11 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+  const saveInflowwKey = async () => {
+    await persistSettings({ ...settings, inflowwApiKey: inflowwKey.trim() });
+    setInflowwSaved(true);
+    setTimeout(() => setInflowwSaved(false), 2000);
   };
 
   const list = (integrations && integrations.length ? integrations : DEFAULT_INTEGRATIONS)
@@ -3364,6 +3271,31 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
         <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Creator Bible URL</label>
         <p className="c-muted text-xs mb-2">
           Fixed to <span className="c-text">{CREATOR_BIBLE_URL}</span>, shown once to each creator right after her first login.
+        </p>
+      </div>
+
+      <div className="border-t c-border pt-6 mb-8">
+        <div className="flex items-center gap-2 mb-1.5">
+          <DollarSign size={15} className="c-accent" />
+          <span className="text-sm c-text font-medium">Infloww API key</span>
+        </div>
+        <p className="c-muted text-xs mb-3">
+          One key covers the whole roster — earnings, subscriber, and marketing stats sync in automatically for every creator scoped to it in Infloww. No one needs to log in anywhere.
+        </p>
+        <div className="flex gap-2 mb-2">
+          <input type={showInflowwKey ? "text" : "password"} value={inflowwKey} onChange={(e) => setInflowwKey(e.target.value)}
+            placeholder="inf_..."
+            className="flex-1 c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text outline-none focus-border-accent font-mono" />
+          <button onClick={() => setShowInflowwKey((s) => !s)}
+            className="px-3 py-2 rounded-lg border c-border c-muted fs-11 font-mono">{showInflowwKey ? "Hide" : "Show"}</button>
+        </div>
+        <button onClick={saveInflowwKey}
+          className="py-2.5 px-4 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
+          Save key
+        </button>
+        {inflowwSaved && <p className="c-success text-xs font-mono mt-3">Saved.</p>}
+        <p className="fs-10 c-faint font-mono mt-3">
+          Infloww keys expire (max 180 days) — you'll need to generate a fresh one and paste it here when that happens.
         </p>
       </div>
 
@@ -5255,7 +5187,7 @@ function App() {
   const { value: trends, loading: trendsLoading, persist: persistTrends } = useSupaTable("trends", "id", [], trendsToJS, trendsToDB);
   const { value: bufferDailyStats, loading: bufferDailyStatsLoading } = useSupaBufferStats();
   const { value: ofDailyStats, loading: ofDailyStatsLoading } = useSupaOfDailyStats();
-  const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234" });
+  const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
   const [showLanding, setShowLanding] = useState(true);
