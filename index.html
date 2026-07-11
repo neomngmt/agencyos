@@ -4966,7 +4966,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
   const [results, setResults] = React.useState([]);
   const [profileCount, setProfileCount] = React.useState(0);
   const [error, setError] = React.useState("");
-  const [threshold, setThreshold] = React.useState(1.5);
+  const [threshold, setThreshold] = React.useState(3);
   const [topN, setTopN] = React.useState(15);
   const [addingHandle, setAddingHandle] = React.useState("");
 
@@ -5026,7 +5026,7 @@ function TrendScraper({ models, persistModels, restrictModel }) {
         <div className="w-full">
           <div className="fs-10 c-muted font-mono uppercase mb-2">Viral threshold — post is viral if it beats the profile average by</div>
           <div className="flex flex-wrap gap-2 mb-4">
-            {[1.5, 2, 2.5, 3].map(t => (
+            {[2, 3, 5, 10, 15].map(t => (
               <button key={t} onClick={() => setThreshold(t)}
                 className={`px-3 py-1.5 rounded-full border fs-11 font-mono font-semibold transition-colors ${threshold === t ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
                 {t}x
