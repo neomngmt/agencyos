@@ -5767,6 +5767,7 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
   const [topN, setTopN] = useState(15);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
+  const [rosterCopied, setRosterCopied] = useState(false);
   const fmt = (n) => (!n ? "0" : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
   const all = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
   const inCategory = filter === "all" ? all : all.filter((r) => (r.category || "Other") === filter);
@@ -5794,6 +5795,19 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
       setGenerateError(e.message || "Failed to trigger scrape.");
     }
     setGenerating(false);
+  };
+
+  const copyRoster = async () => {
+    // Strips Instagram's igsh= tracking query string, one clean link per line.
+    const links = sorted.map((p) => (p.url || "").split("?")[0]).filter(Boolean);
+    if (!links.length) return;
+    try {
+      await navigator.clipboard.writeText(links.join("\n"));
+      setRosterCopied(true);
+      setTimeout(() => setRosterCopied(false), 2000);
+    } catch (e) {
+      setGenerateError("Couldn't copy to clipboard.");
+    }
   };
 
   return (
@@ -5838,7 +5852,13 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
               </button>
             ))}
           </div>
-          <p className="fs-10 c-faint font-mono mb-5">Showing top {Math.min(topN, inCategory.length)} of {inCategory.length}</p>
+          <div className="flex items-center justify-between mb-5">
+            <p className="fs-10 c-faint font-mono">Showing top {Math.min(topN, inCategory.length)} of {inCategory.length}</p>
+            <button onClick={copyRoster} disabled={sorted.length === 0}
+              className="px-3 py-1.5 rounded-full border c-border c-muted hover-bg-surface fs-10 font-mono font-semibold transition-colors disabled:opacity-40 tap">
+              {rosterCopied ? "Copied!" : "Get Roster"}
+            </button>
+          </div>
         </>
       )}
       {filter === "all" && <div className="mb-5" />}
