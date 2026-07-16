@@ -5780,23 +5780,27 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
     setGenerating(true);
     setGenerateError("");
     setScrapeErrors([]);
+    const failedChunks = [];
+    const allScrapeErrors = [];
     try {
-      const results = await Promise.allSettled(
-        [0, 1, 2, 3].map((chunk) =>
-          fetch(`${SUPABASE_URL}/functions/v1/weekly-trends-scrape?chunk=${chunk}`, {
+      // Chunks run one at a time (not in parallel) — running all 4 at once,
+      // each firing several concurrent Apify calls internally, was enough
+      // simultaneous pay-per-event requests to trip Apify's 402 rate limit
+      // even with credit remaining.
+      for (const chunk of [0, 1, 2, 3]) {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/weekly-trends-scrape?chunk=${chunk}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
             body: "{}",
-          }).then(async (r) => {
-            if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`);
-            return r.json();
-          })
-        )
-      );
-      const failedChunks = results.filter((r) => r.status === "rejected");
-      const allScrapeErrors = results
-        .filter((r) => r.status === "fulfilled")
-        .flatMap((r) => r.value.errors || []);
+          });
+          if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`);
+          const data = await r.json();
+          allScrapeErrors.push(...(data.errors || []));
+        } catch (e) {
+          failedChunks.push(e);
+        }
+      }
       if (failedChunks.length) setGenerateError(`${failedChunks.length} of 4 chunks failed outright — check Edge Function logs.`);
       setScrapeErrors(allScrapeErrors);
       if (onReload) await onReload();
@@ -5832,7 +5836,7 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
           </button>
         </div>
         {lastSync && <p className="fs-10 c-faint font-mono mt-2 text-center">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
-        {generating && <p className="fs-10 c-muted font-mono mt-2 text-center">Scraping all tracked profiles via Apify — this takes 2-3 min, feel free to check back.</p>}
+        {generating && <p className="fs-10 c-muted font-mono mt-2 text-center">Scraping all tracked profiles via Apify — this takes 10-15 min now that it runs sequentially to avoid rate limits, feel free to check back.</p>}
         {generateError && <p className="fs-10 c-warn font-mono mt-2 text-center">{generateError}</p>}
         {scrapeErrors.length > 0 && (
           <div className="mt-2 text-center">
