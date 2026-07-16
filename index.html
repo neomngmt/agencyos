@@ -5767,6 +5767,7 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
   const [topN, setTopN] = useState(15);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
+  const [scrapeErrors, setScrapeErrors] = useState([]);
   const [rosterCopied, setRosterCopied] = useState(false);
   const fmt = (n) => (!n ? "0" : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
   const all = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
@@ -5778,6 +5779,7 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
   const generateNow = async () => {
     setGenerating(true);
     setGenerateError("");
+    setScrapeErrors([]);
     try {
       const results = await Promise.allSettled(
         [0, 1, 2, 3].map((chunk) =>
@@ -5785,11 +5787,18 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
             body: "{}",
-          }).then((r) => { if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`); return r; })
+          }).then(async (r) => {
+            if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`);
+            return r.json();
+          })
         )
       );
-      const failed = results.filter((r) => r.status === "rejected");
-      if (failed.length) setGenerateError(`${failed.length} of 4 chunks failed — check Edge Function logs.`);
+      const failedChunks = results.filter((r) => r.status === "rejected");
+      const allScrapeErrors = results
+        .filter((r) => r.status === "fulfilled")
+        .flatMap((r) => r.value.errors || []);
+      if (failedChunks.length) setGenerateError(`${failedChunks.length} of 4 chunks failed outright — check Edge Function logs.`);
+      setScrapeErrors(allScrapeErrors);
       if (onReload) await onReload();
     } catch (e) {
       setGenerateError(e.message || "Failed to trigger scrape.");
@@ -5825,6 +5834,12 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
         {lastSync && <p className="fs-10 c-faint font-mono mt-2 text-center">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
         {generating && <p className="fs-10 c-muted font-mono mt-2 text-center">Scraping all tracked profiles via Apify — this takes 2-3 min, feel free to check back.</p>}
         {generateError && <p className="fs-10 c-warn font-mono mt-2 text-center">{generateError}</p>}
+        {scrapeErrors.length > 0 && (
+          <div className="mt-2 text-center">
+            <p className="fs-10 c-warn font-mono">{scrapeErrors.length} profile(s) failed this run:</p>
+            <p className="fs-9 c-faint font-mono mt-1">{scrapeErrors.map((e) => `${e.handle} (${e.error})`).join("  ·  ")}</p>
+          </div>
+        )}
       </div>
 
       <div className="fs-10 c-muted font-mono uppercase mb-2">Style</div>
