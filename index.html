@@ -592,7 +592,7 @@ function useSupaTable(table, idField, fallback, toJS, toDB) {
     }
   };
 
-  return { value, loading, persist };
+  return { value, loading, persist, reload: load };
 }
 
 // settings is a single fixed row (id = 1), not an array.
@@ -5762,9 +5762,11 @@ function ReelSorterPage() {
 
 // ---------- weekly trends (auto-scraped every Sunday from tracked profiles) ----------
 
-function TrendsPage({ weeklyTrendReels }) {
+function TrendsPage({ weeklyTrendReels, onReload }) {
   const [filter, setFilter] = useState("all");
   const [topN, setTopN] = useState(15);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState("");
   const fmt = (n) => (!n ? "0" : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
   const all = [...(weeklyTrendReels || [])].sort((a, b) => (b.ratio || 0) - (a.ratio || 0) || new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
   const inCategory = filter === "all" ? all : all.filter((r) => (r.category || "Other") === filter);
@@ -5772,13 +5774,43 @@ function TrendsPage({ weeklyTrendReels }) {
   const lastSync = all.reduce((latest, r) => (r.syncedAt && (!latest || r.syncedAt > latest) ? r.syncedAt : latest), null);
   const counts = TREND_CATEGORIES.reduce((acc, c) => { acc[c] = all.filter((r) => (r.category || "Other") === c).length; return acc; }, {});
 
+  const generateNow = async () => {
+    setGenerating(true);
+    setGenerateError("");
+    try {
+      const results = await Promise.allSettled(
+        [0, 1, 2, 3].map((chunk) =>
+          fetch(`${SUPABASE_URL}/functions/v1/weekly-trends-scrape?chunk=${chunk}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
+            body: "{}",
+          }).then((r) => { if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`); return r; })
+        )
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length) setGenerateError(`${failed.length} of 4 chunks failed — check Edge Function logs.`);
+      if (onReload) await onReload();
+    } catch (e) {
+      setGenerateError(e.message || "Failed to trigger scrape.");
+    }
+    setGenerating(false);
+  };
+
   return (
     <div>
       <div className="c-bg-surface border c-border rounded-xl p-4 mb-5">
         <p className="fs-11 c-muted">
-          Auto-scraped every Sunday from the profiles tracked in the <span className="c-text">weekly-trends-scrape</span> edge function. Pick a category for its top viral reels across every tracked profile in it, ranked by how far each beat its own account's average.
+          Actively scans the last 7 days of posts from every profile tracked in the <span className="c-text">weekly-trends-scrape</span> edge function, and surfaces the ones that beat that profile's own average — a fresh read on what's working right now, not a stale weekly snapshot.
         </p>
-        {lastSync && <p className="fs-10 c-faint font-mono mt-2">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
+        <div className="flex justify-center mt-3">
+          <button onClick={generateNow} disabled={generating}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg c-bg-accent c-onaccent fs-11 font-mono uppercase tracking-wide font-semibold hover-bg-accent2 disabled:opacity-40 tap">
+            {generating ? <><Loader2 size={13} className="animate-spin" /> Generating...</> : <><Flame size={13} /> Generate now</>}
+          </button>
+        </div>
+        {lastSync && <p className="fs-10 c-faint font-mono mt-2 text-center">Last synced {new Date(lastSync).toLocaleString("en-US")}</p>}
+        {generating && <p className="fs-10 c-muted font-mono mt-2 text-center">Scraping all tracked profiles via Apify — this takes 2-3 min, feel free to check back.</p>}
+        {generateError && <p className="fs-10 c-warn font-mono mt-2 text-center">{generateError}</p>}
       </div>
 
       <div className="fs-10 c-muted font-mono uppercase mb-2">Style</div>
@@ -5930,7 +5962,7 @@ function App() {
   const { value: ofDailyStats, loading: ofDailyStatsLoading } = useSupaOfDailyStats();
   const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "" });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
-  const { value: weeklyTrendReels, loading: weeklyTrendReelsLoading } = useSupaTable("weekly_trend_reels", "id", [], weeklyTrendReelsToJS, weeklyTrendReelsToDB);
+  const { value: weeklyTrendReels, loading: weeklyTrendReelsLoading, reload: reloadWeeklyTrendReels } = useSupaTable("weekly_trend_reels", "id", [], weeklyTrendReelsToJS, weeklyTrendReelsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
   const [showLanding, setShowLanding] = useState(true);
   const [view, setView] = useState(null);
@@ -6157,7 +6189,7 @@ function App() {
               ? <TrendScraper models={agencyModels} persistModels={scopedPersistModels} />
               : <TrendScraper models={models} persistModels={persistModels} restrictModel={restrictModel} />)}
             {currentView === "reelsorter" && isAdmin && <ReelSorterPage />}
-            {currentView === "weeklytrends" && isAdmin && <TrendsPage weeklyTrendReels={weeklyTrendReels} />}
+            {currentView === "weeklytrends" && isAdmin && <TrendsPage weeklyTrendReels={weeklyTrendReels} onReload={reloadWeeklyTrendReels} />}
             {currentView === "neo" && <NeoPage agency={session.agency} session={session} onNavigate={setView}
               onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
               cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} />}
