@@ -14,7 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;overflow-x:hidden;max-width:100vw;}
 body{ background-color:#07090a; }
 .global-shoot{ position:fixed; z-index:-1; width:3px; height:3px; border-radius:50%; opacity:0; pointer-events:none;
   background:#eafff0;
@@ -5479,7 +5479,11 @@ function ReelSorterPage() {
     }
 
     function loadUrls() {
-      const lines = urlInput.value.split("\n");
+      // Mobile paste (especially iOS) sometimes treats a multi-line clipboard
+      // of URLs as a single encoded URL, turning real newlines into literal
+      // "%0A" text instead of actual line breaks — split on those too.
+      const raw = urlInput.value.replace(/%0D%0A|%0A|%0D/gi, "\n");
+      const lines = raw.split("\n");
       const existing = new Set(items.map((i) => i.url));
       lines.forEach((line) => {
         const url = normalizeUrl(line);
@@ -5872,9 +5876,9 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
         {generating && <p className="fs-10 c-muted font-mono mt-2 text-center">Scraping all tracked profiles via Apify — this takes 10-15 min now that it runs sequentially to avoid rate limits, feel free to check back.</p>}
         {generateError && <p className="fs-10 c-warn font-mono mt-2 text-center">{generateError}</p>}
         {scrapeErrors.length > 0 && (
-          <div className="mt-2 text-center">
+          <div className="mt-2 text-center px-2" style={{ minWidth: 0 }}>
             <p className="fs-10 c-warn font-mono">{scrapeErrors.length} profile(s) failed this run:</p>
-            <p className="fs-9 c-faint font-mono mt-1">{scrapeErrors.map((e) => `${e.handle} (${e.error})`).join("  ·  ")}</p>
+            <p className="fs-9 c-faint font-mono mt-1" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{scrapeErrors.map((e) => `${e.handle} (${e.error})`).join("  ·  ")}</p>
           </div>
         )}
       </div>
