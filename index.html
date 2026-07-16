@@ -5423,7 +5423,7 @@ function ReelSorterPage() {
       document.body.appendChild(s);
     }
 
-    const DEFAULT_CATEGORIES = ["Text on screen", "POV skit", "Talking head", "Omegle", "Ragebait", "Half text format", "Ostatní"];
+    const DEFAULT_CATEGORIES = ["Text on screen", "POV skit", "Talking head", "Omegle", "Ragebait", "Half text format", "Skits", "Ostatní"];
     let categories = DEFAULT_CATEGORIES.slice();
     let items = [];
     let seq = 0;
@@ -5762,6 +5762,52 @@ function ReelSorterPage() {
 
 // ---------- weekly trends (auto-scraped every Sunday from tracked profiles) ----------
 
+function TrendReelCard({ post, fmt }) {
+  const [videoError, setVideoError] = useState(false);
+  const dateStr = post.timestamp ? new Date(post.timestamp).toLocaleDateString("en-US") : null;
+
+  return (
+    <div className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
+      {(post.videoUrl || post.displayUrl) && (
+        <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
+          {post.videoUrl && !videoError ? (
+            <video src={post.videoUrl} poster={post.displayUrl} controls playsInline preload="none"
+              onError={() => setVideoError(true)}
+              className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <>
+              {post.displayUrl && <img src={post.displayUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+              {videoError && (
+                <a href={post.url} target="_blank" rel="noopener noreferrer"
+                  className="absolute inset-0 flex items-center justify-center text-center p-3"
+                  style={{ background: "rgba(0,0,0,0.6)" }}>
+                  <span className="fs-10 font-mono px-3 py-1.5 rounded-lg c-bg-accent c-onaccent font-semibold">
+                    Video expired — open on Instagram →
+                  </span>
+                </a>
+              )}
+            </>
+          )}
+          <div className="absolute top-2 right-2 c-bg-accent c-onaccent fs-9 font-mono font-bold px-1.5 py-0.5 rounded-lg" style={{ pointerEvents: "none" }}>{(post.ratio || 0).toFixed(1)}x avg</div>
+          <div className="absolute top-2 left-2 fs-10 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", pointerEvents: "none" }}>@{post.username || post.profile}</div>
+          <div className="absolute bottom-2 left-2 fs-9 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#39e673", pointerEvents: "none" }}>{post.category || "Other"}</div>
+        </div>
+      )}
+      <div className="p-3">
+        <div className="flex gap-3 fs-12 font-mono mb-1">
+          <span className="flex items-center gap-1 c-text"><Eye size={12} />{fmt(post.videoViewCount)}</span>
+          <span style={{ color: "#E1306C" }}>&#9829; {fmt(post.likesCount)}</span>
+        </div>
+        {post.caption && <div className="fs-11 c-muted leading-snug mb-1.5" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.caption}</div>}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          {dateStr && <div className="fs-10 c-faint font-mono whitespace-nowrap">{dateStr}</div>}
+          <a href={post.url} target="_blank" rel="noopener noreferrer" className="fs-10 c-accent hover-accent-text font-mono whitespace-nowrap">Open on Instagram →</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TrendsPage({ weeklyTrendReels, onReload }) {
   const [filter, setFilter] = useState("all");
   const [topN, setTopN] = useState(15);
@@ -5871,10 +5917,10 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
               </button>
             ))}
           </div>
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
             <p className="fs-10 c-faint font-mono">Showing top {Math.min(topN, inCategory.length)} of {inCategory.length}</p>
             <button onClick={copyRoster} disabled={sorted.length === 0}
-              className="px-3 py-1.5 rounded-full border c-border c-muted hover-bg-surface fs-10 font-mono font-semibold transition-colors disabled:opacity-40 tap">
+              className="px-3 py-1.5 rounded-full border c-border c-muted hover-bg-surface fs-10 font-mono font-semibold transition-colors disabled:opacity-40 tap shrink-0">
               {rosterCopied ? "Copied!" : "Get Roster"}
             </button>
           </div>
@@ -5889,35 +5935,9 @@ function TrendsPage({ weeklyTrendReels, onReload }) {
       )}
 
       {sorted.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-5 gap-3">
           {sorted.map((post, i) => (
-            <div key={post.id || i}
-              className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
-              {(post.videoUrl || post.displayUrl) && (
-                <div className="relative w-full bg-black" style={{ paddingTop: "177.78%" }}>
-                  {post.videoUrl ? (
-                    <video src={post.videoUrl} poster={post.displayUrl} controls playsInline preload="none"
-                      className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <img src={post.displayUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                  )}
-                  <div className="absolute top-2 right-2 c-bg-accent c-onaccent fs-9 font-mono font-bold px-1.5 py-0.5 rounded-lg" style={{ pointerEvents: "none" }}>{(post.ratio || 0).toFixed(1)}x avg</div>
-                  <div className="absolute top-2 left-2 fs-10 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", pointerEvents: "none" }}>@{post.username || post.profile}</div>
-                  <div className="absolute bottom-2 left-2 fs-9 font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#39e673", pointerEvents: "none" }}>{post.category || "Other"}</div>
-                </div>
-              )}
-              <div className="p-3">
-                <div className="flex gap-3 fs-12 font-mono mb-1">
-                  <span className="flex items-center gap-1 c-text"><Eye size={12} />{fmt(post.videoViewCount)}</span>
-                  <span style={{ color: "#E1306C" }}>&#9829; {fmt(post.likesCount)}</span>
-                </div>
-                {post.caption && <div className="fs-11 c-muted leading-snug mb-1.5" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.caption}</div>}
-                <div className="flex items-center justify-between">
-                  {post.timestamp && <div className="fs-10 c-faint font-mono">{new Date(post.timestamp).toLocaleDateString("en-US")}</div>}
-                  <a href={post.url} target="_blank" rel="noopener noreferrer" className="fs-10 c-accent hover-accent-text font-mono">Open on Instagram →</a>
-                </div>
-              </div>
-            </div>
+            <TrendReelCard key={post.id || i} post={post} fmt={fmt} />
           ))}
         </div>
       )}
