@@ -3658,7 +3658,7 @@ function CreatorTrending({ trends, agency }) {
 
 // ---------- Neo (AI assistant) ----------
 
-function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
+function NeoOrb({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onClick }) {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
   const pulseRef = useRef(0.2);
@@ -3734,12 +3734,13 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, onClick }) {
 
       const sinceBump = Date.now() - (speakBumpRef?.current || 0);
       const bump = speaking && sinceBump < 220 ? (1 - sinceBump / 220) * 0.55 : 0;
+      const liveAmp = speaking ? (liveAmpRef?.current || 0) : 0;
       const basePulse = thinking ? 260 : speaking ? 180 : 900;
       const baseAmp = thinking ? 0.3 : speaking ? 0.22 : 0.15;
-      pulseRef.current = 0.2 + Math.sin(Date.now() / basePulse) * baseAmp + bump;
+      pulseRef.current = 0.2 + Math.sin(Date.now() / basePulse) * baseAmp + bump + liveAmp * 0.5;
 
       // Smoothly grow the orb when active, ease back down when idle.
-      const targetScale = active ? 1.22 : 1;
+      const targetScale = active ? 1.22 + liveAmp * 0.06 : 1;
       scaleRef.current += (targetScale - scaleRef.current) * (active ? 0.22 : 0.1);
 
       const r = rotRef.current;
@@ -3855,10 +3856,12 @@ function NeoRadar({ active }) {
   return <canvas ref={canvasRef} />;
 }
 
-function NeoWaveform({ amplitude }) {
+function NeoWaveform({ amplitude, liveAmpRef, speaking }) {
   const canvasRef = useRef(null);
   const ampRef = useRef(amplitude);
   ampRef.current = amplitude;
+  const speakingRef2 = useRef(speaking);
+  speakingRef2.current = speaking;
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -3874,7 +3877,8 @@ function NeoWaveform({ amplitude }) {
       ctx.strokeStyle = "rgba(120,255,160,0.85)";
       ctx.lineWidth = 1.4;
       ctx.beginPath();
-      const amp = ampRef.current;
+      const live = speakingRef2.current ? (liveAmpRef?.current || 0) : 0;
+      const amp = ampRef.current + live * 22;
       for (let x = 0; x < w; x++) {
         const y = h / 2 + Math.sin(x * 0.09 + t) * amp * Math.sin(t * 0.6) + Math.sin(x * 0.2 + t * 2) * (amp * 0.35);
         if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -3927,9 +3931,14 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const requestIdRef = useRef(0);
   const audioRef = useRef(null);
   const speakPulseTimerRef = useRef(null);
+  const liveAmpRef = useRef(0);
+  const audioCtxRef = useRef(null);
+  const analyserRafRef = useRef(null);
 
   const stopSpeakPulse = () => {
     if (speakPulseTimerRef.current) { clearInterval(speakPulseTimerRef.current); speakPulseTimerRef.current = null; }
+    if (analyserRafRef.current) { cancelAnimationFrame(analyserRafRef.current); analyserRafRef.current = null; }
+    liveAmpRef.current = 0;
   };
 
   const speakText = async (text) => {
@@ -3947,7 +3956,19 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       if (error) throw error;
 
       // supabase-js returns edge function binary responses as a Blob.
-      const blob = data instanceof Blob ? data : new Blob([data], { type: "audio/wav" });
+      const rawBytes = data instanceof Blob ? await data.arrayBuffer() : data;
+
+      // Sanity check: a real WAV file starts with "RIFF". If it doesn't,
+      // something upstream (Groq or the edge function) likely returned an
+      // error body instead of audio — surface that instead of guessing.
+      const header = new Uint8Array(rawBytes.slice(0, 4));
+      const headerStr = String.fromCharCode(...header);
+      if (headerStr !== "RIFF") {
+        const text = new TextDecoder().decode(rawBytes).slice(0, 300);
+        throw new Error(`unexpected response (${rawBytes.byteLength} bytes): ${text || "empty"}`);
+      }
+
+      const blob = new Blob([rawBytes], { type: "audio/wav" });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
@@ -3955,18 +3976,54 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       audio.onplay = () => {
         setSpeaking(true);
         speakingRef.current = true;
-        speakPulseTimerRef.current = setInterval(() => { speakBumpRef.current = Date.now(); }, 180);
+
+        // Real-time amplitude analysis: route the audio through a Web Audio
+        // analyser so the orb and waveform react to the actual sound, not a
+        // fake timer.
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            audioCtxRef.current = ctx;
+            const source = ctx.createMediaElementSource(audio);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.6;
+            source.connect(analyser);
+            analyser.connect(ctx.destination);
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            const tick = () => {
+              analyser.getByteTimeDomainData(data);
+              let sum = 0;
+              for (let i = 0; i < data.length; i++) {
+                const v = (data[i] - 128) / 128;
+                sum += v * v;
+              }
+              const rms = Math.sqrt(sum / data.length);
+              liveAmpRef.current = Math.min(1, rms * 4);
+              if (rms > 0.02) speakBumpRef.current = Date.now();
+              analyserRafRef.current = requestAnimationFrame(tick);
+            };
+            tick();
+          }
+        } catch (analyserErr) {
+          // Web Audio unsupported/blocked — fall back to a steady synthetic
+          // pulse so the orb still animates while speaking.
+          speakPulseTimerRef.current = setInterval(() => { speakBumpRef.current = Date.now(); }, 180);
+        }
       };
       audio.onended = () => {
         setSpeaking(false);
         speakingRef.current = false;
         stopSpeakPulse();
+        if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
         URL.revokeObjectURL(url);
       };
       audio.onerror = () => {
         setSpeaking(false);
         speakingRef.current = false;
         stopSpeakPulse();
+        if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
         setHeard("(voice error: failed to play audio)");
       };
       await audio.play();
@@ -4123,6 +4180,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     if (speakingRef.current) {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
       stopSpeakPulse();
+      if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
       speakingRef.current = false;
       setSpeaking(false);
       return;
@@ -4229,7 +4287,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
           {/* center sphere */}
           <div className="flex flex-col items-center justify-center">
-            <NeoOrb thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} onClick={orbClick} />
+            <NeoOrb thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} />
             <div className="fs-10 tracking-widest mt-1" style={{ color: textDim, letterSpacing: "3px" }}>
               N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
             </div>
@@ -4244,7 +4302,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
             <div className="fs-10 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>PROXIMITY</div>
             <NeoRadar active={listening || thinking} />
             <div className="fs-10 tracking-widest mt-3 mb-1.5" style={{ color: textDim, letterSpacing: "2px" }}>AUDIO I/O</div>
-            <NeoWaveform amplitude={speaking ? 9 : listening ? 4 : 1.5} />
+            <NeoWaveform amplitude={speaking ? 4 : listening ? 4 : 1.5} liveAmpRef={liveAmpRef} speaking={speaking} />
           </div>
         </div>
 
