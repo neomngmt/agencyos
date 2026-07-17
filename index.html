@@ -3958,17 +3958,18 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       // supabase-js returns edge function binary responses as a Blob.
       const rawBytes = data instanceof Blob ? await data.arrayBuffer() : data;
 
-      // Sanity check: a real WAV file starts with "RIFF". If it doesn't,
-      // something upstream (Groq or the edge function) likely returned an
-      // error body instead of audio — surface that instead of guessing.
-      const header = new Uint8Array(rawBytes.slice(0, 4));
-      const headerStr = String.fromCharCode(...header);
-      if (headerStr !== "RIFF") {
+      // Sanity check: a real MP3 starts with an ID3 tag or an MPEG frame
+      // sync byte. If it doesn't, something upstream (Groq or the edge
+      // function) likely returned an error body instead of audio.
+      const header = new Uint8Array(rawBytes.slice(0, 3));
+      const isId3 = header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33; // "ID3"
+      const isMpegSync = header[0] === 0xFF && (header[1] & 0xE0) === 0xE0;
+      if (!isId3 && !isMpegSync) {
         const text = new TextDecoder().decode(rawBytes).slice(0, 300);
         throw new Error(`unexpected response (${rawBytes.byteLength} bytes): ${text || "empty"}`);
       }
 
-      const blob = new Blob([rawBytes], { type: "audio/wav" });
+      const blob = new Blob([rawBytes], { type: "audio/mpeg" });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
@@ -4018,6 +4019,9 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
         stopSpeakPulse();
         if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
         URL.revokeObjectURL(url);
+        // Hands-free loop: once Neo finishes talking, start listening again
+        // automatically — no need to click the orb for each turn.
+        startActiveListen();
       };
       audio.onerror = () => {
         setSpeaking(false);
