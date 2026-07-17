@@ -744,12 +744,14 @@ const weeklyTrendReelsToJS = (r) => ({
   videoUrl: r.video_url || "", username: r.username || "", likesCount: r.likes_count || 0,
   videoViewCount: r.video_view_count || 0, caption: r.caption || "", ratio: r.ratio || 0,
   category: r.category || "Other", timestamp: r.timestamp || null, syncedAt: r.synced_at || null,
+  transcript: r.transcript === null || r.transcript === undefined ? null : r.transcript,
 });
 const weeklyTrendReelsToDB = (r) => ({
   id: r.id, profile: r.profile || "", url: r.url || "", display_url: r.displayUrl || "",
   video_url: r.videoUrl || "", username: r.username || "", likes_count: r.likesCount || 0,
   video_view_count: r.videoViewCount || 0, caption: r.caption || "", ratio: r.ratio || 0,
   category: r.category || "Other", timestamp: r.timestamp || null, synced_at: r.syncedAt || new Date().toISOString(),
+  transcript: r.transcript || null,
 });
 
 const trendsToJS = (r) => ({
@@ -5780,7 +5782,20 @@ function ReelSorterPage() {
 // ---------- weekly trends (auto-scraped every Sunday from tracked profiles) ----------
 
 function TrendReelCard({ post, fmt }) {
+  const [expanded, setExpanded] = useState(false);
+  const [scriptCopied, setScriptCopied] = useState(false);
   const dateStr = post.timestamp ? new Date(post.timestamp).toLocaleDateString("en-US") : null;
+  const hasTranscript = !!post.transcript; // non-empty string
+  const noSpeechFound = post.category === "Talking head" && post.transcript === "";
+
+  const copyScript = async () => {
+    if (!post.transcript) return;
+    try {
+      await navigator.clipboard.writeText(post.transcript);
+      setScriptCopied(true);
+      setTimeout(() => setScriptCopied(false), 2000);
+    } catch (_e) {}
+  };
 
   return (
     <div className="c-bg-surface border c-border rounded-xl overflow-hidden hover-border-accent hover-lift transition-all">
@@ -5803,6 +5818,24 @@ function TrendReelCard({ post, fmt }) {
           <span style={{ color: "#E1306C" }}>&#9829; {fmt(post.likesCount)}</span>
         </div>
         {post.caption && <div className="fs-11 c-muted leading-snug mb-1.5" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{post.caption}</div>}
+        {hasTranscript && (
+          <div className="mb-1.5 p-2 rounded-lg" style={{ background: "rgba(57,230,115,0.06)", border: "1px solid rgba(57,230,115,0.18)" }}>
+            <div className="flex items-center justify-between gap-2">
+              <button onClick={() => setExpanded((e) => !e)} className="fs-9 font-mono font-bold c-accent tap" style={{ textAlign: "left" }}>
+                {expanded ? "▾ Script" : "▸ Script"}
+              </button>
+              <button onClick={copyScript} className="fs-9 font-mono c-muted hover-accent-text tap shrink-0">
+                {scriptCopied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            {expanded && <p className="fs-11 c-muted leading-snug mt-1" style={{ overflowWrap: "anywhere" }}>{post.transcript}</p>}
+          </div>
+        )}
+        {noSpeechFound && (
+          <div className="mb-1.5 fs-9 font-mono px-2 py-1 rounded-lg" style={{ background: "rgba(255,180,50,0.08)", border: "1px solid rgba(255,180,50,0.25)", color: "#ffb432" }}>
+            ⚠ No speech detected — might not actually be a talking-head video
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           {dateStr && <div className="fs-10 c-faint font-mono whitespace-nowrap">{dateStr}</div>}
           <a href={post.url} target="_blank" rel="noopener noreferrer" className="fs-10 c-accent hover-accent-text font-mono whitespace-nowrap">Open on Instagram →</a>
