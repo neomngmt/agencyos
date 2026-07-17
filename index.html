@@ -3933,6 +3933,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const speakPulseTimerRef = useRef(null);
   const liveAmpRef = useRef(0);
   const audioCtxRef = useRef(null);
+  const analyserNodeRef = useRef(null);
   const analyserRafRef = useRef(null);
 
   const stopSpeakPulse = () => {
@@ -3944,10 +3945,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const speakText = async (text) => {
     try {
       // Stop anything currently playing before starting the next line.
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
+      if (audioRef.current) audioRef.current.pause();
       stopSpeakPulse();
 
       const { data, error } = await supabaseClient.functions.invoke("neo-tts", {
@@ -3987,43 +3985,41 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
       const blob = new Blob([rawBytes], { type: "audio/wav" });
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
+
+      // Reuse the single persistent <audio> element created on the user's
+      // first click (unlockAudio) — creating a fresh Audio() each turn is
+      // what triggers the browser's autoplay block on later, gesture-less
+      // turns of the hands-free loop.
+      if (!audioRef.current) audioRef.current = new Audio();
+      const audio = audioRef.current;
+      const prevUrl = audio.dataset.blobUrl;
+      audio.src = url;
+      audio.dataset.blobUrl = url;
 
       audio.onplay = () => {
         setSpeaking(true);
         speakingRef.current = true;
 
         // Real-time amplitude analysis: route the audio through a Web Audio
-        // analyser so the orb and waveform react to the actual sound, not a
-        // fake timer.
-        try {
-          const AudioCtx = window.AudioContext || window.webkitAudioContext;
-          if (AudioCtx) {
-            const ctx = new AudioCtx();
-            audioCtxRef.current = ctx;
-            const source = ctx.createMediaElementSource(audio);
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 256;
-            analyser.smoothingTimeConstant = 0.6;
-            source.connect(analyser);
-            analyser.connect(ctx.destination);
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            const tick = () => {
-              analyser.getByteTimeDomainData(data);
-              let sum = 0;
-              for (let i = 0; i < data.length; i++) {
-                const v = (data[i] - 128) / 128;
-                sum += v * v;
-              }
-              const rms = Math.sqrt(sum / data.length);
-              liveAmpRef.current = Math.min(1, rms * 4);
-              if (rms > 0.02) speakBumpRef.current = Date.now();
-              analyserRafRef.current = requestAnimationFrame(tick);
-            };
-            tick();
-          }
-        } catch (analyserErr) {
+        // analyser (created once, reused) so the orb and waveform react to
+        // the actual sound, not a fake timer.
+        if (analyserNodeRef.current) {
+          const analyser = analyserNodeRef.current;
+          const dataArr = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            analyser.getByteTimeDomainData(dataArr);
+            let sum = 0;
+            for (let i = 0; i < dataArr.length; i++) {
+              const v = (dataArr[i] - 128) / 128;
+              sum += v * v;
+            }
+            const rms = Math.sqrt(sum / dataArr.length);
+            liveAmpRef.current = Math.min(1, rms * 4);
+            if (rms > 0.02) speakBumpRef.current = Date.now();
+            analyserRafRef.current = requestAnimationFrame(tick);
+          };
+          tick();
+        } else {
           // Web Audio unsupported/blocked — fall back to a steady synthetic
           // pulse so the orb still animates while speaking.
           speakPulseTimerRef.current = setInterval(() => { speakBumpRef.current = Date.now(); }, 180);
@@ -4033,8 +4029,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
         setSpeaking(false);
         speakingRef.current = false;
         stopSpeakPulse();
-        if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
-        URL.revokeObjectURL(url);
+        if (prevUrl) URL.revokeObjectURL(prevUrl);
         // Hands-free loop: once Neo finishes talking, start listening again
         // automatically — no need to click the orb for each turn.
         startActiveListen();
@@ -4043,9 +4038,12 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
         setSpeaking(false);
         speakingRef.current = false;
         stopSpeakPulse();
-        if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
-        setHeard("(voice error: failed to play audio)");
+        const mediaErr = audio.error;
+        const codeNames = { 1: "ABORTED", 2: "NETWORK", 3: "DECODE", 4: "SRC_NOT_SUPPORTED" };
+        const codeName = mediaErr ? (codeNames[mediaErr.code] || `code ${mediaErr.code}`) : "unknown";
+        setHeard(`(voice error: failed to play audio — ${codeName}, ${rawBytes.byteLength} bytes)`);
       };
+      if (audioCtxRef.current?.state === "suspended") await audioCtxRef.current.resume();
       await audio.play();
     } catch (err) {
       setSpeaking(false);
@@ -4189,7 +4187,37 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     }
   };
 
+  const unlockAudio = () => {
+    // Browsers (Safari especially) only allow audio.play() without a fresh
+    // click if the very first successful play() on this exact element
+    // happened inside a real user gesture. A src-less element doesn't count
+    // as "successful" — it needs an actual (even silent) audio source.
+    if (!audioRef.current) {
+      audioRef.current = new Audio(
+        "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+      );
+      audioRef.current.play().catch(() => {});
+    }
+    if (!audioCtxRef.current) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        audioCtxRef.current = new AudioCtx();
+        try {
+          const source = audioCtxRef.current.createMediaElementSource(audioRef.current);
+          const analyser = audioCtxRef.current.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.6;
+          source.connect(analyser);
+          analyser.connect(audioCtxRef.current.destination);
+          analyserNodeRef.current = analyser;
+        } catch {}
+      }
+    }
+    if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume();
+  };
+
   const orbClick = () => {
+    unlockAudio();
     if (thinking) {
       requestIdRef.current++; // invalidates the in-flight response
       thinkingRef.current = false;
@@ -4198,9 +4226,8 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       return;
     }
     if (speakingRef.current) {
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      if (audioRef.current) { audioRef.current.pause(); }
       stopSpeakPulse();
-      if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
       speakingRef.current = false;
       setSpeaking(false);
       return;
