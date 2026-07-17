@@ -3925,61 +3925,55 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   }, [messages, thinking]);
 
   const requestIdRef = useRef(0);
-  const voicesRef = useRef([]);
+  const audioRef = useRef(null);
+  const speakPulseTimerRef = useRef(null);
 
-  // Chrome loads TTS voices asynchronously — grab them as soon as they're
-  // ready, and again if the browser tells us the list changed.
-  useEffect(() => {
-    if (!window.speechSynthesis) return;
-    const loadVoices = () => { voicesRef.current = window.speechSynthesis.getVoices(); };
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-  }, []);
+  const stopSpeakPulse = () => {
+    if (speakPulseTimerRef.current) { clearInterval(speakPulseTimerRef.current); speakPulseTimerRef.current = null; }
+  };
 
-  const speakText = (text) => {
-    if (!window.speechSynthesis) return;
+  const speakText = async (text) => {
     try {
-      // Chrome's speech queue can get silently stuck (e.g. after a tab switch,
-      // or if speak() was called again before the last one finished) — clearing
-      // it first is the standard fix for "speak() does nothing, no error."
-      window.speechSynthesis.cancel();
-      const utter = new window.SpeechSynthesisUtterance(text);
-      utter.rate = 0.97;
-      utter.pitch = 0.88;
-      utter.lang = "en-US";
-      const voices = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
-      const enVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
-      const qualityPattern = /natural|enhanced|premium|neural|online/i;
-      const malePattern = /male|david|daniel|alex|fred|guy|aaron|arthur|ryan|mark|tom\b/i;
-      const femalePattern = /female|samantha|victoria|karen|zira|susan|allison|ava|moira|tessa/i;
-      const preferred =
-        enVoices.find((v) => v.name === "Google UK English Male") ||
-        enVoices.find((v) => qualityPattern.test(v.name) && malePattern.test(v.name) && !femalePattern.test(v.name)) ||
-        enVoices.find((v) => malePattern.test(v.name) && !femalePattern.test(v.name)) ||
-        enVoices.find((v) => qualityPattern.test(v.name) && !femalePattern.test(v.name)) ||
-        enVoices.find((v) => !femalePattern.test(v.name)) ||
-        enVoices[0] ||
-        voices[0];
-      if (preferred) utter.voice = preferred;
-      utter.onstart = () => { setSpeaking(true); speakingRef.current = true; };
-      utter.onend = () => { setSpeaking(false); speakingRef.current = false; };
-      utter.onerror = (e) => {
+      // Stop anything currently playing before starting the next line.
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+      stopSpeakPulse();
+
+      const { data, error } = await supabaseClient.functions.invoke("neo-tts", {
+        body: { text },
+      });
+      if (error) throw error;
+
+      // supabase-js returns edge function binary responses as a Blob.
+      const blob = data instanceof Blob ? data : new Blob([data], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onplay = () => {
+        setSpeaking(true);
+        speakingRef.current = true;
+        speakPulseTimerRef.current = setInterval(() => { speakBumpRef.current = Date.now(); }, 180);
+      };
+      audio.onended = () => {
         setSpeaking(false);
         speakingRef.current = false;
-        setHeard(`(voice error: ${e?.error || "unknown"})`);
+        stopSpeakPulse();
+        URL.revokeObjectURL(url);
       };
-      utter.onboundary = () => { speakBumpRef.current = Date.now(); };
-      // Safari can silently drop speak() if it's called in the very same tick
-      // as cancel() — a tiny delay avoids that race, invisibly.
-      setTimeout(() => {
-        try {
-          window.speechSynthesis.speak(utter);
-          setTimeout(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 50);
-        } catch (err) {
-          setHeard(`(voice error: ${err?.message || "failed to speak"})`);
-        }
-      }, 30);
+      audio.onerror = () => {
+        setSpeaking(false);
+        speakingRef.current = false;
+        stopSpeakPulse();
+        setHeard("(voice error: failed to play audio)");
+      };
+      await audio.play();
     } catch (err) {
+      setSpeaking(false);
+      speakingRef.current = false;
+      stopSpeakPulse();
       setHeard(`(voice error: ${err?.message || "failed to speak"})`);
     }
   };
@@ -4127,7 +4121,8 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       return;
     }
     if (speakingRef.current) {
-      window.speechSynthesis.cancel();
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      stopSpeakPulse();
       speakingRef.current = false;
       setSpeaking(false);
       return;
