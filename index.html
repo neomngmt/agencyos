@@ -3953,7 +3953,24 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       const { data, error } = await supabaseClient.functions.invoke("neo-tts", {
         body: { text },
       });
-      if (error) throw error;
+      if (error) {
+        // supabase-js's FunctionsHttpError hides the real response body
+        // behind a generic "non-2xx status code" message — the actual
+        // reason (e.g. a Groq error) is in error.context, the raw Response.
+        let detail = error.message;
+        try {
+          if (error.context && typeof error.context.text === "function") {
+            const bodyText = await error.context.text();
+            try {
+              const parsed = JSON.parse(bodyText);
+              detail = parsed.error || bodyText;
+            } catch {
+              detail = bodyText || detail;
+            }
+          }
+        } catch {}
+        throw new Error(detail);
+      }
 
       // supabase-js returns edge function binary responses as a Blob.
       const rawBytes = data instanceof Blob ? await data.arrayBuffer() : data;
