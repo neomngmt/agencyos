@@ -5331,36 +5331,57 @@ function CreatorDashboard({ stats, tasks, restrictModel, onNavigate, bufferDaily
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10);
 
-  const inflowwBlock = (accountType, title) => {
+  const dayList30 = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d.toISOString().slice(0, 10);
+  });
+
+  const InflowwRevenueCard = ({ accountType, title }) => {
     const rowsAll = myInflowwRows.filter((r) => r.accountType === accountType);
+    const [range, setRange] = useState(7);
     if (!rowsAll.length) return null;
-    const week = rowsAll.filter((r) => r.statDate >= sevenDaysAgoStr);
-    const last30 = rowsAll.filter((r) => r.statDate >= thirtyDaysAgoStr);
-    const series = last7Dates.map((d) => sumInfloww(rowsAll.filter((r) => r.statDate === d), "earningsNet"));
+    const days = range === 7 ? last7Dates : dayList30;
+    const sumForDay = (day) => rowsAll.filter((r) => r.statDate === day).reduce((t, r) => t + (r.earningsNet || 0), 0);
+    const chartData = days.map((day) => ({ date: day, value: sumForDay(day) }));
+    const rangeTotal = chartData.reduce((t, d) => t + d.value, 0);
+    const prevDays = (range === 7
+      ? Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (13 - i)); return d.toISOString().slice(0, 10); })
+      : Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (59 - i)); return d.toISOString().slice(0, 10); }));
+    const prevTotal = prevDays.reduce((t, day) => t + sumForDay(day), 0);
+    const rangeRows = rowsAll.filter((r) => days.includes(r.statDate));
+
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        {[["Last 7 days", week], ["Last 30 days", last30]].map(([label, rows]) => (
-          <div key={label} className="c-bg-surface border c-border rounded-xl px-4 py-3.5 hover-lift">
-            <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">{label} — {title}</div>
-            <div className="text-xl font-semibold c-accent mb-2"><CountUp value={sumInfloww(rows, "earningsNet")} prefix="$" /></div>
-            {label === "Last 7 days" && <div className="mb-2"><Sparkline data={series} /></div>}
-            <div className="flex gap-4 fs-10 font-mono c-faint uppercase">
-              <span><CountUp value={sumInfloww(rows, "messagesCount")} /> messages</span>
-              <span><CountUp value={sumInfloww(rows, "tipsCount")} /> tips</span>
-              <span><CountUp value={sumInfloww(rows, "subsCount")} /> subs</span>
+      <div className="c-bg-surface border c-border rounded-xl p-4 mb-3">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <span className="fs-10 uppercase tracking-widest c-muted font-mono">{title}</span>
+          <div className="flex items-center gap-2">
+            <DeltaTag current={rangeTotal} previous={prevTotal} />
+            <div className="flex rounded-lg border c-border overflow-hidden">
+              {[7, 30].map((n) => (
+                <button key={n} onClick={() => setRange(n)}
+                  className={`tap px-2 py-0.5 fs-9 font-mono uppercase transition-colors ${range === n ? "c-bg-accent c-onaccent" : "c-muted hover-bg-surface"}`}>
+                  {n}D
+                </button>
+              ))}
             </div>
           </div>
-        ))}
+        </div>
+        <div className="text-2xl font-extrabold c-accent mb-1">$<CountUp value={rangeTotal} /></div>
+        <div className="mb-2"><RevenueChart data={chartData} height={120} /></div>
+        <div className="flex gap-4 fs-10 font-mono c-faint uppercase">
+          <span><CountUp value={sumInfloww(rangeRows, "messagesCount")} /> messages</span>
+          <span><CountUp value={sumInfloww(rangeRows, "tipsCount")} /> tips</span>
+          <span><CountUp value={sumInfloww(rangeRows, "subsCount")} /> subs</span>
+        </div>
       </div>
     );
   };
 
-  const inflowwFreeBlock = inflowwBlock("free", "Infloww · Free OF");
-  const inflowwPaidBlock = inflowwBlock("paid", "Infloww · Paid OF");
-  const inflowwSection = (inflowwFreeBlock || inflowwPaidBlock) && (
+  const hasFreeInfloww = myInflowwRows.some((r) => r.accountType === "free");
+  const hasPaidInfloww = myInflowwRows.some((r) => r.accountType === "paid");
+  const inflowwSection = (hasFreeInfloww || hasPaidInfloww) && (
     <div className="mb-6">
-      {inflowwPaidBlock}
-      {inflowwFreeBlock}
+      {hasPaidInfloww && <InflowwRevenueCard accountType="paid" title="Infloww · Paid OF" />}
+      {hasFreeInfloww && <InflowwRevenueCard accountType="free" title="Infloww · Free OF" />}
     </div>
   );
   const myBufferRows = (bufferDailyStats || []).filter((r) => r.model === restrictModel && r.statDate >= sevenDaysAgoStr);
