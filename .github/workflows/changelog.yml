@@ -13,6 +13,9 @@ jobs:
   log-update:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Insert changelog entry into Supabase
         env:
           SUPABASE_URL: "https://kvwwjyvkoiqsvpyzbcmn.supabase.co"
