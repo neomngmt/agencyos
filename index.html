@@ -4433,13 +4433,14 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
 
       material.opacity = 0.5 + pulse * 0.12;
 
-      // Shockwave ring — expands and fades over ~600ms from the same
+      // Shockwave ring — expands and fades over ~450ms from the same
       // transition moment, then sits idle (opacity 0) until the next one.
-      if (sinceTransition < 600) {
-        const bt = sinceTransition / 600;
-        const ringScale = scaleVec.x * (1 + bt * 1.4);
+      // Kept small/short so it fades out well before reaching the frame edge.
+      if (sinceTransition < 450) {
+        const bt = sinceTransition / 450;
+        const ringScale = scaleVec.x * (1 + bt * 0.45);
         burstMesh.scale.set(ringScale, ringScale, ringScale);
-        burstMesh.material.opacity = (1 - bt) * 0.5;
+        burstMesh.material.opacity = Math.pow(1 - bt, 2) * 0.5;
         burstMesh.lookAt(camera.position);
       } else {
         burstMesh.material.opacity = 0;
