@@ -4100,6 +4100,192 @@ class SimplexNoise3D {
 // flowing simplex noise, rendered as glowing wireframe, matching the
 // "organic warped glass sphere" reference much more closely than a 2D
 // canvas approximation can.
+// Layered, shader-driven orb — a faithful adaptation of the open-source
+// "voiceorb" project (github.com/aguscruiz/voiceorb): 3 nested translucent
+// spheres, each with a custom GLSL shader combining wave + simplex-noise
+// surface distortion and a fresnel edge glow. Recolored to green (no
+// rainbow/chromatic-aberration effect, which the original uses but we don't
+// want). Critically: every reactive value (scale, distortion amount) is
+// smoothed through a lerp before it ever touches the mesh — that's what
+// keeps it from looking like it's glitching, even though the underlying
+// audio signal driving it jumps around.
+function NeoOrbLayered({ thinking, speaking, listening, liveAmpRef, onClick }) {
+  const mountRef = useRef(null);
+  const stateRef = useRef({ thinking, speaking, listening });
+  stateRef.current = { thinking, speaking, listening };
+
+  useEffect(() => {
+    if (!window.THREE) return;
+    const THREE = window.THREE;
+    const mount = mountRef.current;
+    const size = Math.min(mount.clientWidth || 380, 380);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.z = 4.4;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(size, size);
+    mount.innerHTML = "";
+    mount.appendChild(renderer.domElement);
+
+    const vertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      uniform float time;
+      uniform float audioLevel;
+      uniform float layerOffset;
+      vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+      vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+      vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+      vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+      float snoise(vec3 v){
+        const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+        vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+        vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g;
+        vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+        vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+        i=mod289(i);
+        vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+        float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+        vec4 j=p-49.0*floor(p*ns.z*ns.z);
+        vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+        vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+        vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+        vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+        vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+        vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+        vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+        p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+        vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+        return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+      }
+      void main(){
+        vNormal = normalize(normalMatrix * normal);
+        vec3 pos = position;
+        float wave1 = sin(pos.y*2.5+time*1.5+layerOffset)*cos(pos.x*2.0-time*1.2);
+        float wave2 = sin(pos.x*3.0-time*1.8+layerOffset)*cos(pos.z*2.5+time*1.5);
+        float noise1 = snoise(pos*1.2+time*0.3+layerOffset);
+        float distortion = (wave1+wave2)*0.01 + noise1*0.012;
+        distortion *= (0.3 + audioLevel*0.7);
+        pos = pos + normal * distortion;
+        vPosition = pos;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos,1.0);
+      }
+    `;
+    const fragmentShader = `
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      uniform vec3 sphereColor;
+      uniform float opacity;
+      uniform float time;
+      void main(){
+        vec3 viewDirection = normalize(cameraPosition - vPosition);
+        float fresnel = pow(1.0 - abs(dot(viewDirection, normalize(vNormal))), 2.0);
+        float shimmer = sin(vPosition.x*8.0+vPosition.y*6.0+time*2.0)*0.04+0.96;
+        vec3 color = sphereColor * shimmer;
+        color += fresnel * vec3(0.55, 1.0, 0.72) * 0.7;
+        gl_FragColor = vec4(color, opacity + fresnel * 0.25);
+      }
+    `;
+
+    const LAYER_CFG = [
+      { scale: 1.0, opacity: 0.18, color: 0x0e6b34, rot: { x: 0.0016, y: 0.0026, z: 0 } },
+      { scale: 0.84, opacity: 0.24, color: 0x1cbf5c, rot: { x: -0.0022, y: 0.0034, z: 0.0012 } },
+      { scale: 0.66, opacity: 0.4, color: 0x9dffc4, rot: { x: 0.0032, y: -0.0024, z: -0.0014 } },
+    ];
+    const layers = LAYER_CFG.map((cfg, i) => {
+      const geo = new THREE.SphereGeometry(cfg.scale, 64, 64);
+      const mat = new THREE.ShaderMaterial({
+        vertexShader, fragmentShader,
+        uniforms: {
+          time: { value: 0 }, audioLevel: { value: 0 }, layerOffset: { value: i * 2.0 },
+          sphereColor: { value: new THREE.Color(cfg.color) }, opacity: { value: cfg.opacity },
+        },
+        transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.userData = { baseScale: cfg.scale, rot: cfg.rot };
+      scene.add(mesh);
+      return { mesh, geo, mat };
+    });
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+    let raf;
+    const clock = new THREE.Clock();
+    let currentScale = 1.0;
+    let currentAudioLevel = 0.15;
+    // A slow, organic "breathing" target for idle/listening cadence — not
+    // driven by raw jumpy input, just its own gentle randomized wander.
+    let cadence = { intensity: 0.15, next: 0 };
+
+    const animate = () => {
+      const { thinking: th, speaking: sp, listening: li } = stateRef.current;
+      const elapsed = clock.getElapsedTime();
+      const now = elapsed;
+
+      let targetScale = 1.0;
+      let targetAudioLevel = 0.15;
+
+      if (th) {
+        const breathe = (Math.sin(now * 1.5) + 1) / 2;
+        targetScale = 1.0 + 0.03 + breathe * 0.09;
+        targetAudioLevel = 0.35 + breathe * 0.15;
+      } else if (sp) {
+        // Real TTS amplitude (0.4-1, updates in bursts) is only ever used as
+        // a *target* — currentScale eases toward it, never snaps to it.
+        const amp = liveAmpRef?.current || 0.5;
+        targetScale = 1.0 + 0.05 + amp * 0.14;
+        targetAudioLevel = 0.5 + amp * 0.35;
+      } else if (li) {
+        if (now >= cadence.next) {
+          cadence.intensity = 0.3 + Math.random() * 0.5;
+          cadence.next = now + 0.15 + Math.random() * 0.25;
+        }
+        targetScale = 1.0 + 0.02 + cadence.intensity * 0.16;
+        targetAudioLevel = 0.4 + cadence.intensity * 0.3;
+      } else {
+        targetScale = 1.0;
+        targetAudioLevel = 0.15;
+      }
+
+      // The smoothing step — this is the whole trick. Even a jumpy target
+      // becomes a smooth ease once it only ever nudges a running value.
+      currentScale += (targetScale - currentScale) * 0.08;
+      currentAudioLevel += (targetAudioLevel - currentAudioLevel) * 0.06;
+
+      layers.forEach(({ mesh, mat }) => {
+        mat.uniforms.time.value += 0.012;
+        mat.uniforms.audioLevel.value = currentAudioLevel;
+        mesh.rotation.x += mesh.userData.rot.x;
+        mesh.rotation.y += mesh.userData.rot.y;
+        mesh.rotation.z += mesh.userData.rot.z;
+        const s = mesh.userData.baseScale * currentScale;
+        mesh.scale.set(s, s, s);
+      });
+
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      layers.forEach(({ geo, mat }) => { geo.dispose(); mat.dispose(); });
+      renderer.dispose();
+      if (mount) mount.innerHTML = "";
+    };
+  }, []);
+
+  return (
+    <div ref={mountRef} onClick={onClick}
+      className="mx-auto cursor-pointer"
+      style={{ width: "100%", maxWidth: 380, aspectRatio: "1 / 1" }} />
+  );
+}
+
 function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onClick }) {
   const mountRef = useRef(null);
   const stateRef = useRef({ thinking, speaking, listening });
@@ -4141,6 +4327,27 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     });
     const glowMesh = new THREE.Mesh(glowGeo, glowMat);
     scene.add(glowMesh);
+
+    // Sparse glowing particles drifting in a loose shell around the sphere —
+    // adds a bit of "alive dust" without touching the wireframe itself.
+    const HALO_COUNT = 260;
+    const haloPos = new Float32Array(HALO_COUNT * 3);
+    for (let i = 0; i < HALO_COUNT; i++) {
+      const r = 1.18 + Math.random() * 0.55;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      haloPos[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+      haloPos[i * 3 + 1] = Math.cos(phi) * r;
+      haloPos[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
+    }
+    const haloGeo = new THREE.BufferGeometry();
+    haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+    const haloMat = new THREE.PointsMaterial({
+      color: 0x9dffc4, size: 0.014, transparent: true, opacity: 0.7,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    });
+    const haloPoints = new THREE.Points(haloGeo, haloMat);
+    scene.add(haloPoints);
 
     const noise = new SimplexNoise3D(7);
     let raf;
@@ -4184,6 +4391,8 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       scaleVec.y = scaleVec.z = scaleVec.x;
       mesh.scale.copy(scaleVec);
       glowMesh.scale.copy(scaleVec);
+      haloPoints.rotation.y += 0.0009;
+      haloPoints.rotation.x += 0.0003;
 
       material.opacity = 0.5 + pulse * 0.12;
 
@@ -4198,6 +4407,8 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       material.dispose();
       glowGeo.dispose();
       glowMat.dispose();
+      haloGeo.dispose();
+      haloMat.dispose();
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
@@ -4926,99 +5137,61 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
         <NeoClock />
       </div>
 
-      {/* HUD panel */}
-      <div className="relative rounded p-5" style={{ border: `1px solid ${border}`, background: `linear-gradient(180deg, rgba(18,179,76,0.04), transparent 40%), ${bgPanel}` }}>
-        <div className="fs-10 tracking-widest mb-3" style={{ color: textDim, letterSpacing: "3px" }}>
-          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : speaking ? "SPEAKING" : "ONLINE"}</b> — {speechSupported ? (speaking ? "OUTPUT" : listening ? "LISTENING FOR INPUT" : "STANDBY — CLICK TO TALK") : "VOICE NEEDS CHROME"}
+      {/* Hero: one big orb, minimal chrome around it */}
+      <div className="relative" style={{ minHeight: 460 }}>
+        <div className="fs-10 tracking-widest absolute top-0 left-0" style={{ color: textDim, letterSpacing: "3px" }}>
+          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : speaking ? "SPEAKING" : "ONLINE"}</b>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_220px] gap-4">
-          {/* left telemetry */}
-          <div className="fs-11" style={{ color: textDim }}>
-            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(18,179,76,0.12)" }}>
-              <span>ACTIVE MODELS</span><b style={{ color: neoGreen }}>{models.length}</b>
-            </div>
-            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(18,179,76,0.12)" }}>
-              <span>OPEN TASKS</span><b style={{ color: neoGreen }}>{openTasksCount}</b>
-            </div>
-            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(18,179,76,0.12)" }}>
-              <span>OPEN CARDS</span><b style={{ color: neoGreen }}>{cards.length}</b>
-            </div>
-            <div className="flex justify-between py-1.5" style={{ borderBottom: "1px dashed rgba(18,179,76,0.12)" }}>
-              <span>TRENDS SHARED</span><b style={{ color: neoGreen }}>{relevantTrends.length}</b>
-            </div>
-
-            <div className="mt-4 fs-10 leading-loose" style={{ color: "#12b34c" }}>
-              {logLines.length === 0 && <div style={{ color: textDim, fontStyle: "italic" }}>no recent activity</div>}
-              {logLines.map((l, i) => <div key={i}>{l}</div>)}
-            </div>
-          </div>
-
-          {/* center sphere */}
-          <div className="flex flex-col items-center justify-center">
-            <div style={{ position: "relative", width: "100%", maxWidth: 340, aspectRatio: "1 / 1" }}>
-              <svg viewBox="0 0 400 400" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                <circle cx="200" cy="200" r="196" fill="none" stroke="rgba(57,230,115,0.18)" strokeWidth="1" />
-                <circle cx="200" cy="200" r="182" fill="none" stroke="rgba(57,230,115,0.14)" strokeWidth="1" strokeDasharray="1,7" />
-                {Array.from({ length: 48 }, (_, i) => {
-                  const a = (Math.PI * 2 * i) / 48;
-                  const isMajor = i % 4 === 0;
-                  const r1 = isMajor ? 160 : 168;
-                  const r2 = 178;
-                  return (
-                    <line key={i}
-                      x1={200 + Math.cos(a) * r1} y1={200 + Math.sin(a) * r1}
-                      x2={200 + Math.cos(a) * r2} y2={200 + Math.sin(a) * r2}
-                      stroke={isMajor ? "rgba(120,255,160,0.5)" : "rgba(57,230,115,0.25)"}
-                      strokeWidth={isMajor ? 2 : 1} />
-                  );
-                })}
-                <circle cx="200" cy="200" r="148" fill="none" stroke="rgba(57,230,115,0.22)" strokeWidth="1" />
-              </svg>
-              <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} />
-            </div>
-            <div className="fs-10 tracking-widest mt-1" style={{ color: textDim, letterSpacing: "3px" }}>
-              N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
-            </div>
-            <div className="fs-11 italic mt-2 text-center max-w-xs" style={{ color: neoGreen, opacity: 0.85 }}>
-              {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
-            </div>
-            {heard && <div className="fs-10 italic mt-1" style={{ color: neoGreen, opacity: 0.4 }}>heard: "{heard}"</div>}
-            {voiceError && <div className="fs-10 italic mt-1" style={{ color: "#e07a5f" }}>voice error: {voiceError}</div>}
-          </div>
-
-          {/* right radar + waveform */}
-          <div className="flex flex-col items-center">
-            <div className="fs-10 tracking-widest mb-2" style={{ color: textDim, letterSpacing: "2px" }}>PROXIMITY</div>
-            <NeoRadar active={listening || thinking} />
-            <div className="fs-10 tracking-widest mt-3 mb-1.5" style={{ color: textDim, letterSpacing: "2px" }}>AUDIO I/O</div>
-            <NeoWaveform amplitude={speaking ? 4 : listening ? 4 : 1.5} liveAmpRef={liveAmpRef} speaking={speaking} />
-          </div>
+        {/* compact readouts, top-right — matches a "retrievals / decisions" style strip */}
+        <div className="absolute top-0 right-0 text-right">
+          <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>OPEN TASKS / CARDS</div>
+          <div className="text-2xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>{openTasksCount} <span style={{ color: textDim, fontSize: "16px" }}>/</span> {cards.length}</div>
         </div>
 
-        {/* financial strip */}
-        <div className="flex items-center gap-7 flex-wrap mt-6 pt-4" style={{ borderTop: `1px solid ${border}` }}>
-          <div>
-            <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>PRIMARY OBJECTIVE — MONTHLY REVENUE</div>
-            <div className="text-3xl font-bold" style={{ color: amber, textShadow: "0 0 12px rgba(255,210,74,0.45)" }}><CountUp value={monthRevenue} prefix="$" /></div>
+        <div className="flex flex-col items-center justify-center" style={{ minHeight: 460 }}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 440, aspectRatio: "1 / 1" }}>
+            <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} />
           </div>
-          <div className="flex gap-5">
-            <div className="fs-13" style={{ color: neoGreen }}>
-              ${Math.round(monthGoal).toLocaleString()}
-              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>GOAL</span>
-            </div>
-            <div className="fs-13" style={{ color: neoGreen }}>
-              ${Math.max(0, Math.round(monthGoal - monthRevenue)).toLocaleString()}
-              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>REMAINING</span>
-            </div>
+          <div className="fs-10 tracking-widest mt-2" style={{ color: textDim, letterSpacing: "3px" }}>
+            N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
           </div>
-          <div className="flex-1 minw-180">
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#0a5c2c" }}>
-              <div className="h-full transition-all" style={{ width: `${monthPct}%`, background: `linear-gradient(90deg, #12b34c, ${neoGreen})`, boxShadow: `0 0 8px ${neoGreen}88` }} />
-            </div>
-            <div className="flex justify-between fs-9 mt-1" style={{ color: textDim, letterSpacing: "1px" }}>
-              <span>DAY {dayOfMonth}/{daysInMonth}</span><span>{monthPct}%</span>
-            </div>
+          <div className="fs-13 italic mt-3 text-center max-w-sm" style={{ color: neoGreen, opacity: 0.9 }}>
+            {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
+          </div>
+          {heard && <div className="fs-10 italic mt-1" style={{ color: neoGreen, opacity: 0.4 }}>heard: "{heard}"</div>}
+          {voiceError && <div className="fs-10 italic mt-1" style={{ color: "#e07a5f" }}>voice error: {voiceError}</div>}
+        </div>
+
+        {/* small model/trends readout, bottom-left — de-emphasized so it doesn't compete with the orb */}
+        <div className="absolute bottom-0 left-0 fs-10" style={{ color: textDim }}>
+          <div>ACTIVE MODELS <b style={{ color: neoGreen }}>{models.length}</b></div>
+          <div className="mt-1">TRENDS SHARED <b style={{ color: neoGreen }}>{relevantTrends.length}</b></div>
+        </div>
+      </div>
+
+      {/* financial strip */}
+      <div className="flex items-center gap-7 flex-wrap mt-8 pt-5" style={{ borderTop: `1px solid ${border}` }}>
+        <div>
+          <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>PRIMARY OBJECTIVE — MONTHLY REVENUE</div>
+          <div className="text-3xl font-bold" style={{ color: amber, textShadow: "0 0 12px rgba(255,210,74,0.45)" }}><CountUp value={monthRevenue} prefix="$" /></div>
+        </div>
+        <div className="flex gap-5">
+          <div className="fs-13" style={{ color: neoGreen }}>
+            ${Math.round(monthGoal).toLocaleString()}
+            <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>GOAL</span>
+          </div>
+          <div className="fs-13" style={{ color: neoGreen }}>
+            ${Math.max(0, Math.round(monthGoal - monthRevenue)).toLocaleString()}
+            <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>REMAINING</span>
+          </div>
+        </div>
+        <div className="flex-1 minw-180">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#0a5c2c" }}>
+            <div className="h-full transition-all" style={{ width: `${monthPct}%`, background: `linear-gradient(90deg, #12b34c, ${neoGreen})`, boxShadow: `0 0 8px ${neoGreen}88` }} />
+          </div>
+          <div className="flex justify-between fs-9 mt-1" style={{ color: textDim, letterSpacing: "1px" }}>
+            <span>DAY {dayOfMonth}/{daysInMonth}</span><span>{monthPct}%</span>
           </div>
         </div>
       </div>
