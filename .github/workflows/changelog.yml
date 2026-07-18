@@ -1,8 +1,5 @@
 name: Log Zion OS update
 
-# Runs automatically every time index.html changes on the main branch —
-# adds a row to the `changelog` table in Supabase, which the app already
-# reads to show the "What's New" page and bell notifications to everyone.
 on:
   push:
     branches: [main]
@@ -24,12 +21,24 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=%s)
           COMMIT_SHA=$(git log -1 --pretty=%H)
           ID="cl_gh_${COMMIT_SHA:0:12}"
-          # Escape double quotes so the commit message doesn't break the JSON body
           SAFE_MSG=$(echo "$COMMIT_MSG" | sed 's/"/\\"/g')
 
-          curl -sf -X POST "$SUPABASE_URL/rest/v1/changelog" \
+          echo "ID: $ID"
+          echo "Title: $SAFE_MSG"
+          echo "Key length: ${#SUPABASE_ANON_KEY}"
+
+          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" -X POST "$SUPABASE_URL/rest/v1/changelog" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
-            -H "Prefer: resolution=merge-duplicates" \
-            -d "{\"id\": \"$ID\", \"title\": \"$SAFE_MSG\", \"description\": \"Pushed to Zion OS.\", \"category\": \"improvement\"}"
+            -H "Prefer: resolution=merge-duplicates,return=representation" \
+            -d "{\"id\": \"$ID\", \"title\": \"$SAFE_MSG\", \"description\": \"Pushed to Zion OS.\", \"category\": \"improvement\"}")
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response body:"
+          cat response.txt
+
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "FAILED — Supabase rejected the request."
+            exit 1
+          fi
