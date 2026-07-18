@@ -13,43 +13,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Insert changelog entry into Supabase
+      - name: Insert changelog entry into Supabase (minimal diagnostic)
         env:
           SUPABASE_URL: "https://kvwwjyvkoiqsvpyzbcmn.supabase.co"
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%s)
-          COMMIT_SHA=$(git log -1 --pretty=%H)
-          ID="cl_gh_${COMMIT_SHA:0:12}"
-
-          echo "ID: $ID"
-          echo "Title: $COMMIT_MSG"
-
-          # Build the JSON body with jq instead of manual string escaping —
-          # this is what was silently corrupting the request before.
-          jq -n \
-            --arg id "$ID" \
-            --arg title "$COMMIT_MSG" \
-            --arg description "Pushed to Zion OS." \
-            --arg category "improvement" \
-            '{id: $id, title: $title, description: $description, category: $category}' \
-            > payload.json
-
-          echo "Payload:"
-          cat payload.json
-
-          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" -X POST "$SUPABASE_URL/rest/v1/changelog" \
+          curl -v -X POST "$SUPABASE_URL/rest/v1/changelog" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
-            -H "Prefer: resolution=merge-duplicates" \
-            --data-binary @payload.json)
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response body:"
-          cat response.txt
-
-          if [ "$HTTP_CODE" -ge 400 ]; then
-            echo "FAILED — Supabase rejected the request."
-            exit 1
-          fi
+            -d '{"id":"cl_test_minimal_001","title":"Minimal test","description":"debug","category":"improvement"}'
