@@ -599,6 +599,38 @@ function useSupaTable(table, idField, fallback, toJS, toDB) {
 }
 
 // settings is a single fixed row (id = 1), not an array.
+function useSupaAppState(key, fallback) {
+  const [value, setValue] = useState(fallback);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabaseClient.from("app_state").select("*").eq("key", key).maybeSingle();
+      if (error) throw error;
+      setValue(data ? data.value : fallback);
+    } catch (e) {
+      console.error("load failed for app_state:" + key, e);
+      setValue(fallback);
+    }
+    setLoading(false);
+  }, [key]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const persist = async (next) => {
+    setValue(next);
+    try {
+      const { error } = await supabaseClient.from("app_state").upsert({ key, value: next, updated_at: new Date().toISOString() });
+      if (error) throw error;
+    } catch (e) {
+      console.error("save failed for app_state:" + key, e);
+    }
+  };
+
+  return { value, loading, persist };
+}
+
 function useSupaSettings(fallback) {
   const [value, setValue] = useState(fallback);
   const [loading, setLoading] = useState(true);
@@ -672,6 +704,7 @@ const modelsToJS = (r) => ({
   bufferChannelIdFb: r.buffer_channel_id_fb || "",
   onlyfansAccountId: r.onlyfansapi_account_id || "", onlyfansUsername: r.onlyfansapi_username || "",
   inflowwCreatorIdFree: r.infloww_creator_id_free || "", inflowwCreatorIdPaid: r.infloww_creator_id_paid || "",
+  notifLastSeen: r.notif_last_seen ? new Date(r.notif_last_seen).getTime() : 0,
   inspoProfiles: Array.isArray(r.inspo_profiles) ? r.inspo_profiles : (r.inspo_profiles ? JSON.parse(r.inspo_profiles) : []),
 });
 const modelsToDB = (m) => ({
@@ -686,6 +719,7 @@ const modelsToDB = (m) => ({
   buffer_channel_id_fb: m.bufferChannelIdFb || "",
   onlyfansapi_account_id: m.onlyfansAccountId || "", onlyfansapi_username: m.onlyfansUsername || "",
   infloww_creator_id_free: m.inflowwCreatorIdFree || "", infloww_creator_id_paid: m.inflowwCreatorIdPaid || "",
+  notif_last_seen: m.notifLastSeen ? new Date(m.notifLastSeen).toISOString() : null,
   inspo_profiles: m.inspoProfiles || [],
 });
 
@@ -1422,25 +1456,74 @@ function CreatorForm({ models, cards, persistCards, restrictModel }) {
 
 // ---------- dashboard ----------
 
+function RevenueChart({ data, height = 180 }) {
+  // data: [{ date: 'YYYY-MM-DD', value: number }], oldest first
+  const width = 700;
+  const padTop = 16, padBottom = 28, padLeft = 8, padRight = 8;
+  const plotH = height - padTop - padBottom;
+  const plotW = width - padLeft - padRight;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const n = data.length || 1;
+  const stepX = n > 1 ? plotW / (n - 1) : 0;
+
+  const points = data.map((d, i) => {
+    const x = padLeft + i * stepX;
+    const y = padTop + plotH - (d.value / max) * plotH;
+    return { x, y, ...d };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const areaPath = points.length
+    ? `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${padTop + plotH} L ${points[0].x.toFixed(1)} ${padTop + plotH} Z`
+    : "";
+
+  // show at most ~7 date labels regardless of range, spaced evenly
+  const labelEvery = Math.max(1, Math.ceil(n / 7));
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} style={{ overflow: "visible" }}
+      onMouseLeave={() => setHoverIdx(null)}>
+      <defs>
+        <linearGradient id="revChartFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#39e673" stopOpacity="0.30" />
+          <stop offset="100%" stopColor="#39e673" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {areaPath && <path d={areaPath} fill="url(#revChartFill)" />}
+      {linePath && <path d={linePath} fill="none" stroke="#39e673" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
+      {points.map((p, i) => (
+        <g key={i}
+          onMouseEnter={() => setHoverIdx(i)}
+          style={{ cursor: "pointer" }}>
+          <rect x={p.x - stepX / 2} y={padTop} width={Math.max(stepX, 6)} height={plotH} fill="transparent" />
+          <circle cx={p.x} cy={p.y} r={hoverIdx === i ? 4.5 : 3} fill="#39e673" stroke="#07090a" strokeWidth="1.5" />
+          {i % labelEvery === 0 && (
+            <text x={p.x} y={height - 8} textAnchor="middle" fontSize="10" fontFamily="'JetBrains Mono', monospace" fill="#5c6e65">
+              {new Date(p.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </text>
+          )}
+        </g>
+      ))}
+      {hoverIdx !== null && (
+        <g>
+          <line x1={points[hoverIdx].x} y1={padTop} x2={points[hoverIdx].x} y2={padTop + plotH} stroke="#39e673" strokeWidth="1" strokeDasharray="3,3" opacity="0.4" />
+          <rect x={Math.min(Math.max(points[hoverIdx].x - 38, 0), width - 76)} y={padTop - 4} width="76" height="22" rx="5" fill="#0e1310" stroke="#173425" />
+          <text x={Math.min(Math.max(points[hoverIdx].x, 38), width - 38)} y={padTop + 11} textAnchor="middle" fontSize="11" fontFamily="'JetBrains Mono', monospace" fill="#39e673" fontWeight="700">
+            ${points[hoverIdx].value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}
+
 function Dashboard({ cards, models, stats, reels, onNavigate, inflowwDailyStats }) {
   const activeCount = cards.filter((c) => c.stage !== "posted").length;
   const filmingToday = cards.filter((c) => c.stage === "filming").length;
   const pendingIdeas = cards.filter((c) => c.stage === "idea" && c.source === "creator").length;
   const recent = [...cards].sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
-
-  // Latest weekly entry per model, summed for total agency revenue
-  const latestPerModel = models.map((m) => {
-    const own = stats.filter((s) => s.model === m.name).sort((a, b) => b.weekOf.localeCompare(a.weekOf));
-    return own[0];
-  }).filter(Boolean);
-  const totalRevenue = latestPerModel.reduce((sum, s) => sum + (s.ofEarnings || 0), 0);
-  const mostRecentWeek = latestPerModel.length ? latestPerModel.map((s) => s.weekOf).sort().slice(-1)[0] : null;
-  const prevWeekTotal = mostRecentWeek
-    ? models.reduce((sum, m) => {
-        const own = stats.filter((s) => s.model === m.name && s.weekOf < mostRecentWeek).sort((a, b) => b.weekOf.localeCompare(a.weekOf));
-        return sum + (own[0]?.ofEarnings || 0);
-      }, 0)
-    : null;
+  const [revRange, setRevRange] = useState(7); // 7 or 30
 
   // Best reel from the most recent week that has any reels logged
   const latestReelWeek = reels.length ? [...reels].map((r) => r.weekOf).sort().slice(-1)[0] : null;
@@ -1448,46 +1531,50 @@ function Dashboard({ cards, models, stats, reels, onNavigate, inflowwDailyStats 
     ? reels.filter((r) => r.weekOf === latestReelWeek).sort((a, b) => b.views - a.views)[0]
     : null;
 
-  // Infloww: sum every tracked model's Free + Paid earnings for this agency,
-  // last 7 / last 30 days.
+  // Agency revenue: every tracked model's Free + Paid Infloww earnings,
+  // summed per day across the whole agency, for whichever range is selected.
   const agencyModelNames = new Set(models.map((m) => m.name));
   const myInflowwRows = (inflowwDailyStats || []).filter((r) => agencyModelNames.has(r.model));
-  const sevenDaysAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
-  const thirtyDaysAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
-  const inflowwWeek = myInflowwRows.filter((r) => r.statDate >= sevenDaysAgoStr);
-  const inflowwMonth = myInflowwRows.filter((r) => r.statDate >= thirtyDaysAgoStr);
-  const sumInfloww = (rows) => rows.reduce((t, r) => t + (r.earningsNet || 0), 0);
   const hasInflowwData = myInflowwRows.length > 0;
+
+  const dayList = (n) => Array.from({ length: n }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return d.toISOString().slice(0, 10);
+  });
+  const days = dayList(revRange);
+  const sumForDay = (day) => myInflowwRows.filter((r) => r.statDate === day).reduce((t, r) => t + (r.earningsNet || 0), 0);
+  const chartData = days.map((day) => ({ date: day, value: sumForDay(day) }));
+  const rangeTotal = chartData.reduce((t, d) => t + d.value, 0);
+
+  const prevDays = dayList(revRange * 2).slice(0, revRange);
+  const prevTotal = prevDays.reduce((t, day) => t + sumForDay(day), 0);
 
   return (
     <div>
       <div className="c-bg-surface border c-border rounded-xl p-5 mb-6">
-        <div className="flex items-center justify-between mb-1">
-          <span className="fs-11 uppercase tracking-widest c-muted font-mono">Agency weekly revenue</span>
-          {mostRecentWeek && <DeltaTag current={totalRevenue} previous={prevWeekTotal} />}
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <span className="fs-11 uppercase tracking-widest c-muted font-mono">Agency Revenue</span>
+          <div className="flex items-center gap-2">
+            {hasInflowwData && <DeltaTag current={rangeTotal} previous={prevTotal} />}
+            <div className="flex rounded-lg border c-border overflow-hidden">
+              {[7, 30].map((n) => (
+                <button key={n} onClick={() => setRevRange(n)}
+                  className={`tap px-2.5 py-1 fs-10 font-mono uppercase transition-colors ${revRange === n ? "c-bg-accent c-onaccent" : "c-muted hover-bg-surface"}`}>
+                  {n}D
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        {latestPerModel.length === 0 ? (
-          <div className="fs-12 c-faint font-mono italic py-4">No stats logged yet, add weekly entries in Stats.</div>
+        {!hasInflowwData ? (
+          <div className="fs-12 c-faint font-mono italic py-4">No Infloww data yet — add Creator IDs in Model Manager.</div>
         ) : (
           <>
-            <div className="text-4xl md:text-5xl font-extrabold c-accent mb-1">$<CountUp value={totalRevenue} /></div>
-            <div className="fs-11 c-faint font-mono">across {latestPerModel.length} model{latestPerModel.length === 1 ? "" : "s"}, week of {fmtDay(mostRecentWeek)}</div>
+            <div className="text-4xl md:text-5xl font-extrabold c-accent mb-1">$<CountUp value={rangeTotal} /></div>
+            <div className="fs-11 c-faint font-mono mb-2">across {models.length} model{models.length === 1 ? "" : "s"}, last {revRange} days</div>
+            <RevenueChart data={chartData} />
           </>
         )}
       </div>
-
-      {hasInflowwData && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-          <div className="c-bg-surface border c-border rounded-xl px-4 py-3.5">
-            <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Infloww — Last 7 days (all models)</div>
-            <div className="text-2xl font-extrabold c-accent">$<CountUp value={sumInfloww(inflowwWeek)} /></div>
-          </div>
-          <div className="c-bg-surface border c-border rounded-xl px-4 py-3.5">
-            <div className="fs-10 uppercase tracking-widest c-muted font-mono mb-2">Infloww — Last 30 days (all models)</div>
-            <div className="text-2xl font-extrabold c-accent">$<CountUp value={sumInfloww(inflowwMonth)} /></div>
-          </div>
-        </div>
-      )}
 
       <div className="flex gap-3 flex-wrap mb-6">
         <StatCard label="Active scenes" value={activeCount} color="#12b34c" />
@@ -4575,9 +4662,14 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
 // share one PIN rather than individual accounts.
 function AdminNotificationBell({ cards, tasks, onNavigate }) {
   const [open, setOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(new Set());
+  const { value: dismissedArr, persist: persistDismissedArr } = useSupaAppState("admin_notif_dismissed", []);
+  const dismissed = new Set(dismissedArr);
   const { value: changelogEntries } = useSupaChangelog();
   const bellRef = useRef(null);
+
+  const persistDismissed = (nextSet) => {
+    persistDismissedArr([...nextSet]);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -4596,7 +4688,7 @@ function AdminNotificationBell({ cards, tasks, onNavigate }) {
   const total = overdue.length + stuckIdeas.length + recentChangelog.length;
 
   const markAllRead = () => {
-    setDismissed(new Set([
+    persistDismissed(new Set([
       ...overdueAll.map((t) => `t_${t.id}`),
       ...stuckIdeasAll.map((c) => `c_${c.id}`),
       ...recentChangelogAll.map((e) => `w_${e.id}`),
@@ -5177,7 +5269,7 @@ function WhatsNewPage() {
                   </span>
                 )}
                 <span className="fs-10 font-mono c-faint ml-auto">
-                  {new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · {new Date(e.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                 </span>
               </div>
               <div className="fs-14 font-semibold c-text mb-0.5">{e.title}</div>
