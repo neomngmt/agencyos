@@ -43,7 +43,7 @@ jobs:
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates" \
-            --data @payload.json)
+            --data-binary @payload.json)
 
           echo "HTTP status: $HTTP_CODE"
           echo "Response body:"
