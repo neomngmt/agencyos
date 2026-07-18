@@ -21,18 +21,29 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=%s)
           COMMIT_SHA=$(git log -1 --pretty=%H)
           ID="cl_gh_${COMMIT_SHA:0:12}"
-          SAFE_MSG=$(echo "$COMMIT_MSG" | sed 's/"/\\"/g')
 
           echo "ID: $ID"
-          echo "Title: $SAFE_MSG"
-          echo "Key length: ${#SUPABASE_ANON_KEY}"
+          echo "Title: $COMMIT_MSG"
+
+          # Build the JSON body with jq instead of manual string escaping —
+          # this is what was silently corrupting the request before.
+          jq -n \
+            --arg id "$ID" \
+            --arg title "$COMMIT_MSG" \
+            --arg description "Pushed to Zion OS." \
+            --arg category "improvement" \
+            '{id: $id, title: $title, description: $description, category: $category}' \
+            > payload.json
+
+          echo "Payload:"
+          cat payload.json
 
           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" -X POST "$SUPABASE_URL/rest/v1/changelog" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
-            -H "Prefer: resolution=merge-duplicates,return=representation" \
-            -d "{\"id\": \"$ID\", \"title\": \"$SAFE_MSG\", \"description\": \"Pushed to Zion OS.\", \"category\": \"improvement\"}")
+            -H "Prefer: resolution=merge-duplicates" \
+            --data @payload.json)
 
           echo "HTTP status: $HTTP_CODE"
           echo "Response body:"
