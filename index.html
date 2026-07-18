@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 html,body{margin:0;padding:0;overflow-x:hidden;max-width:100vw;}
 body{ background-color:#07090a; }
@@ -4020,10 +4021,240 @@ function NeoOrb({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onCli
   return <canvas ref={canvasRef} onClick={onClick} className="block mx-auto cursor-pointer" />;
 }
 
-// EXPERIMENTAL alternate orb — a ring of glowing points plus flowing wavy
-// lines wrapped into a circle, inspired by reference stock art. Swap
-// <NeoOrb .../> for <NeoOrbV2 .../> in NeoPage to try it.
-function NeoOrbV2({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onClick }) {
+// EXPERIMENTAL alternate orb v3 — an organic, wavy contour-line sphere
+// (many perturbed latitude rings), matching a reference "flowing glass
+// orb" look. Swap <NeoOrb .../> for <NeoOrbV3 .../> in NeoPage to try it.
+// Compact 3D simplex noise (public-domain algorithm, ported to JS) — used to
+// organically displace the orb's mesh so it flows/warps like the reference
+// art, rather than a hand-rolled sine approximation.
+class SimplexNoise3D {
+  constructor(seed = 1) {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let n = seed >>> 0 || 1;
+    for (let i = 255; i > 0; i--) {
+      n = (n * 1103515245 + 12345) & 0x7fffffff;
+      const j = n % (i + 1);
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    this.perm = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+    this.grad3 = [
+      [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+      [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+      [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1],
+    ];
+  }
+  dot(g, x, y, z) { return g[0]*x + g[1]*y + g[2]*z; }
+  noise(xin, yin, zin) {
+    const F3 = 1/3, G3 = 1/6;
+    const s = (xin+yin+zin)*F3;
+    const i = Math.floor(xin+s), j = Math.floor(yin+s), k = Math.floor(zin+s);
+    const t = (i+j+k)*G3;
+    const X0=i-t, Y0=j-t, Z0=k-t;
+    const x0=xin-X0, y0=yin-Y0, z0=zin-Z0;
+    let i1,j1,k1,i2,j2,k2;
+    if (x0>=y0) {
+      if (y0>=z0) { i1=1;j1=0;k1=0; i2=1;j2=1;k2=0; }
+      else if (x0>=z0) { i1=1;j1=0;k1=0; i2=1;j2=0;k2=1; }
+      else { i1=0;j1=0;k1=1; i2=1;j2=0;k2=1; }
+    } else {
+      if (y0<z0) { i1=0;j1=0;k1=1; i2=0;j2=1;k2=1; }
+      else if (x0<z0) { i1=0;j1=1;k1=0; i2=0;j2=1;k2=1; }
+      else { i1=0;j1=1;k1=0; i2=1;j2=1;k2=0; }
+    }
+    const x1=x0-i1+G3, y1=y0-j1+G3, z1=z0-k1+G3;
+    const x2=x0-i2+2*G3, y2=y0-j2+2*G3, z2=z0-k2+2*G3;
+    const x3=x0-1+3*G3, y3=y0-1+3*G3, z3=z0-1+3*G3;
+    const ii=i&255, jj=j&255, kk=k&255;
+    const gi0 = this.perm[ii+this.perm[jj+this.perm[kk]]] % 12;
+    const gi1 = this.perm[ii+i1+this.perm[jj+j1+this.perm[kk+k1]]] % 12;
+    const gi2 = this.perm[ii+i2+this.perm[jj+j2+this.perm[kk+k2]]] % 12;
+    const gi3 = this.perm[ii+1+this.perm[jj+1+this.perm[kk+1]]] % 12;
+    let n0=0,n1=0,n2=0,n3=0;
+    let t0 = 0.6 - x0*x0 - y0*y0 - z0*z0;
+    if (t0>=0) { t0*=t0; n0 = t0*t0*this.dot(this.grad3[gi0], x0,y0,z0); }
+    let t1 = 0.6 - x1*x1 - y1*y1 - z1*z1;
+    if (t1>=0) { t1*=t1; n1 = t1*t1*this.dot(this.grad3[gi1], x1,y1,z1); }
+    let t2 = 0.6 - x2*x2 - y2*y2 - z2*z2;
+    if (t2>=0) { t2*=t2; n2 = t2*t2*this.dot(this.grad3[gi2], x2,y2,z2); }
+    let t3 = 0.6 - x3*x3 - y3*y3 - z3*z3;
+    if (t3>=0) { t3*=t3; n3 = t3*t3*this.dot(this.grad3[gi3], x3,y3,z3); }
+    return 32 * (n0+n1+n2+n3);
+  }
+}
+
+// Real 3D orb — an icosahedron mesh whose vertices are displaced with
+// flowing simplex noise, rendered as glowing wireframe, matching the
+// "organic warped glass sphere" reference much more closely than a 2D
+// canvas approximation can.
+function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onClick }) {
+  const mountRef = useRef(null);
+  const stateRef = useRef({ thinking, speaking, listening });
+  stateRef.current = { thinking, speaking, listening };
+
+  useEffect(() => {
+    if (!window.THREE) return;
+    const THREE = window.THREE;
+    const mount = mountRef.current;
+    const size = Math.min(mount.clientWidth || 340, 340);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.z = 3.4;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(size, size);
+    mount.innerHTML = "";
+    mount.appendChild(renderer.domElement);
+
+    // JARVIS-style density: several nested wireframe shells at different
+    // detail levels, each spinning on its own axis/speed, layered together
+    // rather than a single mesh — this is what gives the "dense gyroscope"
+    // look instead of one clean sphere.
+    const SHELLS = [
+      { detail: 1, radius: 1.00, opacity: 0.55, axis: new THREE.Vector3(0.2, 1, 0.1), speed: 1.0 },
+      { detail: 2, radius: 0.92, opacity: 0.35, axis: new THREE.Vector3(1, 0.3, 0.5), speed: -0.7 },
+      { detail: 0, radius: 1.10, opacity: 0.22, axis: new THREE.Vector3(0.4, -0.6, 1), speed: 0.45 },
+    ];
+    const shellMeshes = SHELLS.map((cfg) => {
+      const geo = new THREE.IcosahedronGeometry(cfg.radius, cfg.detail === 0 ? 24 : cfg.detail === 1 ? 3 : 2);
+      const base = geo.attributes.position.array.slice();
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x8effb5, wireframe: true, transparent: true,
+        opacity: cfg.opacity, blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+      return { mesh, geo, mat, base, cfg };
+    });
+
+    // Soft glow sphere behind everything
+    const glowGeo = new THREE.SphereGeometry(1.15, 32, 32);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x12b34c, transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending,
+    });
+    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+    scene.add(glowMesh);
+
+    // Crackling electric arcs — jittery lightning bolts jumping between
+    // random points on the sphere surface, regenerated on a timer so it
+    // reads as live electricity rather than a static shape.
+    const ARC_COUNT = 9;
+    const ARC_SEGMENTS = 10;
+    const randSpherePoint = () => {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+      return v.normalize().multiplyScalar(1.02);
+    };
+    const buildArcPositions = (a, b) => {
+      const positions = new Float32Array((ARC_SEGMENTS + 1) * 3);
+      for (let i = 0; i <= ARC_SEGMENTS; i++) {
+        const f = i / ARC_SEGMENTS;
+        const p = a.clone().lerp(b, f);
+        p.multiplyScalar(1 + (Math.random() - 0.5) * 0.12 * Math.sin(f * Math.PI));
+        positions[i * 3] = p.x; positions[i * 3 + 1] = p.y; positions[i * 3 + 2] = p.z;
+      }
+      return positions;
+    };
+    const arcMat = new THREE.LineBasicMaterial({
+      color: 0xdfffe8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+    });
+    const arcs = Array.from({ length: ARC_COUNT }, () => {
+      const geo = new THREE.BufferGeometry();
+      const a = randSpherePoint(), b = randSpherePoint();
+      geo.setAttribute("position", new THREE.BufferAttribute(buildArcPositions(a, b), 3));
+      const mat = arcMat.clone();
+      const line = new THREE.Line(geo, mat);
+      scene.add(line);
+      return { line, geo, mat, life: Math.random(), speed: 1.2 + Math.random() * 1.6 };
+    });
+
+    const noise = new SimplexNoise3D(7);
+    let raf;
+    const clock = new THREE.Clock();
+
+    const animate = () => {
+      const { thinking: th, speaking: sp, listening: li } = stateRef.current;
+      const active = th || sp || li;
+      const elapsed = clock.getElapsedTime();
+
+      const sinceBump = Date.now() - (speakBumpRef?.current || 0);
+      const bump = sp && sinceBump < 220 ? (1 - sinceBump / 220) : 0;
+      const liveAmp = sp ? (liveAmpRef?.current || 0) : 0;
+      // Fast flicker so speaking reads as energetic/alive, not just a slow swell
+      const flicker = sp ? (0.5 + 0.5 * Math.sin(elapsed * 26)) : 0;
+
+      const noiseSpeed = th ? 0.35 : sp ? 0.3 : li ? 0.18 : 0.08;
+      const noiseAmp = 0.08 + bump * 0.22 + liveAmp * (0.3 + flicker * 0.18) + (active ? 0.03 : 0);
+      const t = elapsed * noiseSpeed;
+
+      shellMeshes.forEach(({ mesh, geo, mat, base, cfg }) => {
+        const posAttr = geo.attributes.position;
+        const arr = posAttr.array;
+        for (let i = 0; i < arr.length; i += 3) {
+          const x = base[i], y = base[i + 1], z = base[i + 2];
+          const n = noise.noise(x * 1.6 + t, y * 1.6 + t, z * 1.6 + t);
+          const scale = 1 + n * noiseAmp;
+          arr[i] = x * scale;
+          arr[i + 1] = y * scale;
+          arr[i + 2] = z * scale;
+        }
+        posAttr.needsUpdate = true;
+        geo.computeVertexNormals();
+
+        const baseSpeed = (th ? 0.006 : sp ? 0.005 : li ? 0.003 : 0.0012) * cfg.speed;
+        mesh.rotateOnAxis(cfg.axis.clone().normalize(), baseSpeed + liveAmp * 0.01 * Math.sign(cfg.speed));
+
+        mat.opacity = cfg.opacity * (1 + bump * 0.6 + liveAmp * (0.5 + flicker * 0.5));
+      });
+
+      const targetScale = active ? 1.06 + liveAmp * 0.07 : 1;
+      const s = new THREE.Vector3(targetScale, targetScale, targetScale);
+      shellMeshes.forEach(({ mesh }) => mesh.scale.lerp(s, 0.1));
+      glowMesh.scale.lerp(s, 0.1);
+      glowMat.opacity = 0.06 + bump * 0.05 + liveAmp * 0.08;
+
+      // Electric arcs: each one flashes bright then fades, then jumps to a
+      // new random pair of points — faster/brighter while Neo is speaking.
+      const arcLifeSpeed = 0.012 * (sp ? 2.6 + liveAmp * 3 : th ? 1.6 : li ? 1.1 : 0.6);
+      arcs.forEach((arc) => {
+        arc.life += arcLifeSpeed * arc.speed;
+        if (arc.life >= 1) {
+          arc.life = 0;
+          const a = randSpherePoint(), b = randSpherePoint();
+          arc.geo.setAttribute("position", new THREE.BufferAttribute(buildArcPositions(a, b), 3));
+        }
+        // quick rise, slower fade — reads as a crackle, not a fade in/out pulse
+        const flash = arc.life < 0.15 ? arc.life / 0.15 : Math.max(0, 1 - (arc.life - 0.15) / 0.85);
+        arc.mat.opacity = flash * (0.5 + bump * 0.4 + liveAmp * 0.5);
+        arc.line.scale.copy(s);
+      });
+
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      arcs.forEach(({ geo, mat }) => { geo.dispose(); mat.dispose(); });
+      shellMeshes.forEach(({ geo, mat }) => { geo.dispose(); mat.dispose(); });
+      glowGeo.dispose();
+      glowMat.dispose();
+      renderer.dispose();
+      if (mount) mount.innerHTML = "";
+    };
+  }, []);
+
+  return (
+    <div ref={mountRef} onClick={onClick}
+      className="mx-auto cursor-pointer flex items-center justify-center"
+      style={{ width: "100%", maxWidth: 340, aspectRatio: "1 / 1" }} />
+  );
+}
+
+function NeoOrbV3({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onClick }) {
   const canvasRef = useRef(null);
   const rotRef = useRef(0);
   const scaleRef = useRef(1);
@@ -4042,75 +4273,75 @@ function NeoOrbV2({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     canvas.style.aspectRatio = "1 / 1";
     ctx.scale(dpr, dpr);
 
-    const cx = size / 2, cy = size / 2, baseR = 118;
+    const cx = size / 2, cy = size / 2, baseR = 130;
+    const RINGS = 46;
 
-    // A ring of points around the circumference (ref: glowing dot ring)
-    const DOTS = 64;
+    // Fixed per-ring random seeds so the wobble pattern feels organic but
+    // stable frame-to-frame (only phase animates, not the pattern itself).
+    const seeds = Array.from({ length: RINGS }, () => ({
+      f1: 3 + Math.random() * 4,
+      f2: 5 + Math.random() * 6,
+      p1: Math.random() * Math.PI * 2,
+      p2: Math.random() * Math.PI * 2,
+    }));
 
     let raf;
     const render = () => {
       const active = thinking || speaking || listening;
-      const speed = thinking ? 0.02 : speaking ? 0.016 : listening ? 0.01 : 0.006;
+      const speed = thinking ? 0.012 : speaking ? 0.009 : listening ? 0.006 : 0.003;
       rotRef.current += speed;
 
       const sinceBump = Date.now() - (speakBumpRef?.current || 0);
       const bump = speaking && sinceBump < 220 ? (1 - sinceBump / 220) * 0.6 : 0;
       const liveAmp = speaking ? (liveAmpRef?.current || 0) : 0;
 
-      const targetScale = active ? 1.16 + liveAmp * 0.08 : 1;
-      scaleRef.current += (targetScale - scaleRef.current) * (active ? 0.22 : 0.1);
+      const targetScale = active ? 1.14 + liveAmp * 0.08 : 1;
+      scaleRef.current += (targetScale - scaleRef.current) * (active ? 0.2 : 0.1);
 
-      const r = rotRef.current;
+      const t = rotRef.current;
       const scale = scaleRef.current;
       const R = baseR * scale;
       ctx.clearRect(0, 0, size, size);
 
-      // Soft center glow
-      const glowScale = speaking ? 1.15 : 1;
-      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, R * 0.9 * glowScale);
-      grad.addColorStop(0, `rgba(18,179,76,${0.14 + bump * 0.15 + liveAmp * 0.1})`);
-      grad.addColorStop(1, "rgba(18,179,76,0)");
+      // Soft ambient glow behind the sphere
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, R * 1.05);
+      grad.addColorStop(0, `rgba(57,230,115,${0.10 + bump * 0.12 + liveAmp * 0.08})`);
+      grad.addColorStop(1, "rgba(57,230,115,0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, R * 0.9 * glowScale, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2);
       ctx.fill();
 
-      // Wavy lines wrapped into a circle — 3 offset sine ripples around the ring
-      for (let w = 0; w < 3; w++) {
-        const waveAmp = 6 + w * 3 + bump * 10 + liveAmp * 14;
-        const waveFreq = 8 + w * 2;
-        const phase = r * (1 + w * 0.3) * (w % 2 === 0 ? 1 : -1);
+      const wobbleAmt = 5 + bump * 10 + liveAmp * 14;
+
+      // Latitude contour rings wrapping the sphere, each perturbed with a
+      // layered sine "noise" so the surface feels organically wavy rather
+      // than a clean geometric sphere.
+      for (let ri = 0; ri < RINGS; ri++) {
+        const lat = -Math.PI / 2 + (Math.PI * ri) / (RINGS - 1); // -90deg..+90deg
+        const ringR = Math.cos(lat) * R;           // horizontal radius at this latitude
+        const ringY = Math.sin(lat) * R * 0.92;    // vertical offset (slightly flattened)
+        if (ringR < 2) continue;
+
+        const seed = seeds[ri];
+        const depthFade = 0.25 + Math.cos(lat) * 0.55; // brighter near the equator, dimmer at poles
         ctx.beginPath();
-        for (let i = 0; i <= 240; i++) {
-          const a = (Math.PI * 2 * i) / 240;
-          const wob = Math.sin(a * waveFreq + phase) * waveAmp;
-          const rad = R + wob - w * 10;
-          const x = cx + Math.cos(a) * rad;
-          const y = cy + Math.sin(a) * rad;
+        const STEPS = 90;
+        for (let i = 0; i <= STEPS; i++) {
+          const a = (Math.PI * 2 * i) / STEPS + t * (ri % 2 === 0 ? 1 : -1) * 0.6;
+          const noise =
+            Math.sin(a * seed.f1 + t * 1.3 + seed.p1) * wobbleAmt * 0.6 +
+            Math.sin(a * seed.f2 - t * 0.8 + seed.p2) * wobbleAmt * 0.4;
+          const rx = ringR + noise;
+          const x = cx + Math.cos(a) * rx;
+          const y = cy + ringY + Math.sin(a) * rx * 0.32; // squashed for a spherical feel
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        ctx.strokeStyle = `rgba(${90 + w * 20},255,${150 + w * 15},${0.35 - w * 0.08 + bump * 0.2})`;
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = `rgba(190,255,215,${depthFade * (0.22 + bump * 0.2)})`;
+        ctx.lineWidth = 0.8;
         ctx.stroke();
       }
-
-      // Ring of glowing points around the circumference
-      for (let i = 0; i < DOTS; i++) {
-        const a = (Math.PI * 2 * i) / DOTS + r * 0.5;
-        const twinkle = 0.5 + 0.5 * Math.sin(Date.now() / 400 + i * 1.3);
-        const rad = R + Math.sin(a * 6 + r * 2) * (4 + bump * 8 + liveAmp * 10);
-        const x = cx + Math.cos(a) * rad;
-        const y = cy + Math.sin(a) * rad;
-        const dotSize = 1.2 + twinkle * 1.6 + bump * 1.5;
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(140,255,175,${0.35 + twinkle * 0.55})`;
-        ctx.shadowColor = "rgba(57,230,115,0.9)";
-        ctx.shadowBlur = 4 + twinkle * 6;
-        ctx.arc(x, y, dotSize, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
 
       raf = requestAnimationFrame(render);
     };
@@ -4216,6 +4447,40 @@ function NeoClock() {
     <div className="fs-11 font-mono text-right leading-tight" style={{ color: "#6f9a7a" }}>
       <div style={{ color: "#39e673" }}>{pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}</div>
       <div>{now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}</div>
+    </div>
+  );
+}
+
+function CircuitBoardBG() {
+  return (
+    <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: "none" }}>
+      <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
+        <defs>
+          <pattern id="circuitPattern" width="140" height="140" patternUnits="userSpaceOnUse">
+            <path d="M0 20 H50 V60 H100" fill="none" stroke="rgba(57,230,115,0.10)" strokeWidth="1" />
+            <path d="M140 100 H90 V50 H40" fill="none" stroke="rgba(57,230,115,0.08)" strokeWidth="1" />
+            <path d="M20 0 V40 H60" fill="none" stroke="rgba(57,230,115,0.09)" strokeWidth="1" />
+            <circle cx="50" cy="60" r="2.5" fill="rgba(57,230,115,0.18)" />
+            <circle cx="100" cy="20" r="2" fill="rgba(57,230,115,0.14)" />
+            <circle cx="90" cy="50" r="2" fill="rgba(57,230,115,0.14)" />
+            <circle cx="20" cy="40" r="2" fill="rgba(57,230,115,0.14)" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#circuitPattern)" />
+      </svg>
+      {/* corner brackets, like an instrument-panel frame */}
+      {[
+        { top: 24, left: 24, rotate: 0 },
+        { top: 24, right: 24, rotate: 90 },
+        { bottom: 24, right: 24, rotate: 180 },
+        { bottom: 24, left: 24, rotate: 270 },
+      ].map((pos, i) => (
+        <svg key={i} width="70" height="70" viewBox="0 0 70 70"
+          style={{ position: "absolute", ...pos, transform: `rotate(${pos.rotate}deg)` }}>
+          <path d="M2 30 V2 H30" fill="none" stroke="rgba(57,230,115,0.4)" strokeWidth="1.5" />
+          <circle cx="2" cy="2" r="3" fill="rgba(120,255,160,0.7)" />
+        </svg>
+      ))}
     </div>
   );
 }
@@ -4734,7 +4999,27 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
           {/* center sphere */}
           <div className="flex flex-col items-center justify-center">
-            <NeoOrbV2 thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} />
+            <div style={{ position: "relative", width: "100%", maxWidth: 340, aspectRatio: "1 / 1" }}>
+              <svg viewBox="0 0 400 400" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+                <circle cx="200" cy="200" r="196" fill="none" stroke="rgba(57,230,115,0.18)" strokeWidth="1" />
+                <circle cx="200" cy="200" r="182" fill="none" stroke="rgba(57,230,115,0.14)" strokeWidth="1" strokeDasharray="1,7" />
+                {Array.from({ length: 48 }, (_, i) => {
+                  const a = (Math.PI * 2 * i) / 48;
+                  const isMajor = i % 4 === 0;
+                  const r1 = isMajor ? 160 : 168;
+                  const r2 = 178;
+                  return (
+                    <line key={i}
+                      x1={200 + Math.cos(a) * r1} y1={200 + Math.sin(a) * r1}
+                      x2={200 + Math.cos(a) * r2} y2={200 + Math.sin(a) * r2}
+                      stroke={isMajor ? "rgba(120,255,160,0.5)" : "rgba(57,230,115,0.25)"}
+                      strokeWidth={isMajor ? 2 : 1} />
+                  );
+                })}
+                <circle cx="200" cy="200" r="148" fill="none" stroke="rgba(57,230,115,0.22)" strokeWidth="1" />
+              </svg>
+              <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} />
+            </div>
             <div className="fs-10 tracking-widest mt-1" style={{ color: textDim, letterSpacing: "3px" }}>
               N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
             </div>
@@ -6952,7 +7237,7 @@ function App() {
       {currentView === "neo" ? (
         <div className="fixed inset-0 z-40" style={{ background: "#030705" }}>
           {neoBooting && <NeoBootSequence onDone={() => setNeoBooting(false)} />}
-          <MatrixRain />
+          <CircuitBoardBG />
           <button onClick={() => setView("dashboard")}
             className="tap fixed top-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-lg border font-mono fs-11 uppercase tracking-widest transition-colors"
             style={{ borderColor: "rgba(57,230,115,0.35)", color: "#39e673", background: "rgba(3,7,5,0.6)", backdropFilter: "blur(6px)" }}>
