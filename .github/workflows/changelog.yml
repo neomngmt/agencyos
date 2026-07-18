@@ -1,0 +1,32 @@
+name: Log Zion OS update
+
+# Runs automatically every time index.html changes on the main branch —
+# adds a row to the `changelog` table in Supabase, which the app already
+# reads to show the "What's New" page and bell notifications to everyone.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+
+jobs:
+  log-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Insert changelog entry into Supabase
+        env:
+          SUPABASE_URL: "https://kvwwjyvkoiqsvpyzbcmn.supabase.co"
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          COMMIT_SHA=$(git log -1 --pretty=%H)
+          ID="cl_gh_${COMMIT_SHA:0:12}"
+          # Escape double quotes so the commit message doesn't break the JSON body
+          SAFE_MSG=$(echo "$COMMIT_MSG" | sed 's/"/\\"/g')
+
+          curl -sf -X POST "$SUPABASE_URL/rest/v1/changelog" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "{\"id\": \"$ID\", \"title\": \"$SAFE_MSG\", \"description\": \"Pushed to Zion OS.\", \"category\": \"improvement\"}"
