@@ -4480,6 +4480,7 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
 
   return (
     <div className="relative" ref={bellRef}>
+      <button onClick={toggle} className="tap relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
         <Bell size={16} />
         {total > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full c-bg-accent c-onaccent fs-9 font-mono font-bold flex items-center justify-center">
