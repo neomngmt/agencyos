@@ -4402,50 +4402,49 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
 
 // ---------- notifications ----------
 
-function ChangelogBell({ onNavigate, currentView }) {
-  const { value: entries } = useSupaChangelog();
-  const [seen, setSeen] = useState(null);
-  useEffect(() => {
-    try { setSeen(localStorage.getItem(CHANGELOG_SEEN_KEY)); } catch { setSeen(""); }
-  }, [currentView]);
-  if (!entries.length) return null;
-  const hasUnseen = seen !== null && (!seen || new Date(entries[0].createdAt) > new Date(seen));
-  return (
-    <button onClick={() => onNavigate("whatsnew")} title="What's New"
-      className="tap relative p-1.5 rounded-lg c-muted hover-text-primary hover-bg-surface transition-colors">
-      <Megaphone size={17} />
-      {hasUnseen && (
-        <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full c-bg-accent" style={{ boxShadow: "0 0 0 2px var(--bg-panel)" }} />
-      )}
-    </button>
-  );
+function timeAgo(ts) {
+  if (!ts) return "";
+  const diffMs = Date.now() - ts;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 function NotificationBell({ model, cards, tasks, trends, agency, models, persistModels, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [frozen, setFrozen] = useState(null);
+  const { value: changelogEntries } = useSupaChangelog();
   const lastSeen = model?.notifLastSeen || 0;
   const myName = model?.name;
 
   const newIdeas = cards.filter((c) => c.model === myName && c.source === "team" && c.createdAt > lastSeen);
   const newCalendar = tasks.filter((t) => t.model === myName && t.createdAt > lastSeen);
   const newTrends = trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ) && t.createdAt > lastSeen);
-  const live = { newIdeas, newCalendar, newTrends };
-  const total = newIdeas.length + newCalendar.length + newTrends.length;
+  const newChangelog = changelogEntries.filter((e) => new Date(e.createdAt).getTime() > lastSeen);
+  const live = { newIdeas, newCalendar, newTrends, newChangelog };
+  const total = newIdeas.length + newCalendar.length + newTrends.length + newChangelog.length;
+
+  const markAllRead = async () => {
+    if (total > 0) {
+      await persistModels(models.map((m) => (m.name === myName ? { ...m, notifLastSeen: Date.now() } : m)));
+    }
+  };
 
   const toggle = async () => {
     if (!open) {
       setFrozen(live); // snapshot what's new before marking as seen, so items don't disappear mid-view
       setOpen(true);
-      if (total > 0) {
-        await persistModels(models.map((m) => (m.name === myName ? { ...m, notifLastSeen: Date.now() } : m)));
-      }
     } else {
       setOpen(false);
     }
   };
 
   const shown = frozen || live;
+  const shownTotal = shown.newIdeas.length + shown.newCalendar.length + shown.newTrends.length + shown.newChangelog.length;
 
   return (
     <div className="relative">
@@ -4458,31 +4457,79 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
         )}
       </button>
       {open && (
-        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
-          {shown.newIdeas.length + shown.newCalendar.length + shown.newTrends.length === 0 && (
-            <div className="fs-12 c-faint font-mono italic text-center py-6">You're all caught up.</div>
-          )}
-          {shown.newIdeas.map((c) => (
-            <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
-              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
-              <div className="fs-10 font-mono uppercase c-accent">New idea</div>
-              <div className="fs-12 c-text">{c.title || "Untitled scene"}</div>
-            </button>
-          ))}
-          {shown.newCalendar.map((t) => (
-            <button key={t.id} onClick={() => { onNavigate("calendar"); setOpen(false); }}
-              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
-              <div className="fs-10 font-mono uppercase c-success">Calendar</div>
-              <div className="fs-12 c-text">{t.title}{t.dueDate ? ` — due ${fmtDay(t.dueDate)}` : ""}</div>
-            </button>
-          ))}
-          {shown.newTrends.map((t) => (
-            <button key={t.id} onClick={() => { onNavigate("trending"); setOpen(false); }}
-              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
-              <div className="fs-10 font-mono uppercase" style={{ color: "#E2725B" }}>New trend</div>
-              <div className="fs-12 c-text">{t.title}</div>
-            </button>
-          ))}
+        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-80 c-bg-surface border c-border rounded-xl shadow-2xl z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b c-border">
+            <div className="flex items-center gap-2">
+              <span className="fs-13 font-semibold c-text">Notifications</span>
+              {total > 0 && (
+                <span className="fs-9 font-mono font-bold px-1.5 py-0.5 rounded-full c-bg-accent c-onaccent">{total > 99 ? "99+" : total}</span>
+              )}
+            </div>
+            {total > 0 && (
+              <button onClick={markAllRead} className="fs-10 font-mono c-accent hover-accent-text tap">Mark all read</button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto p-2">
+            {shownTotal === 0 && (
+              <div className="fs-12 c-faint font-mono italic text-center py-6">You're all caught up.</div>
+            )}
+            {shown.newIdeas.map((c) => (
+              <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Film size={16} className="c-accent flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">New idea</div>
+                  <div className="fs-11 c-muted truncate">{c.title || "Untitled scene"}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="fs-9 font-mono c-faint">{timeAgo(c.createdAt)}</span>
+                  {c.createdAt > lastSeen && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#ffb432" }} />}
+                </div>
+              </button>
+            ))}
+            {shown.newCalendar.map((t) => (
+              <button key={t.id} onClick={() => { onNavigate("calendar"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Calendar size={16} className="c-success flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">Calendar</div>
+                  <div className="fs-11 c-muted truncate">{t.title}{t.dueDate ? ` — due ${fmtDay(t.dueDate)}` : ""}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="fs-9 font-mono c-faint">{timeAgo(t.createdAt)}</span>
+                  {t.createdAt > lastSeen && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#ffb432" }} />}
+                </div>
+              </button>
+            ))}
+            {shown.newTrends.map((t) => (
+              <button key={t.id} onClick={() => { onNavigate("trending"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Flame size={16} style={{ color: "#E2725B" }} className="flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">New trend</div>
+                  <div className="fs-11 c-muted truncate">{t.title}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="fs-9 font-mono c-faint">{timeAgo(t.createdAt)}</span>
+                  {t.createdAt > lastSeen && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#ffb432" }} />}
+                </div>
+              </button>
+            ))}
+            {shown.newChangelog.map((e) => (
+              <button key={e.id} onClick={() => { onNavigate("whatsnew"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Megaphone size={16} className="c-accent flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">What's New</div>
+                  <div className="fs-11 c-muted truncate">{e.title}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="fs-9 font-mono c-faint">{timeAgo(new Date(e.createdAt).getTime())}</span>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#ffb432" }} />
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -4491,12 +4538,29 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
 
 // Team/admin version of the notification bell — flags things that need
 // attention right now (overdue tasks, ideas nobody's picked up) rather than
-// tracking a per-model "seen" timestamp like the creator one does.
+// tracking a per-model "seen" timestamp like the creator one does. "Mark all
+// read" is session-only (dismissed set, not persisted) since Team logins
+// share one PIN rather than individual accounts.
 function AdminNotificationBell({ cards, tasks, onNavigate }) {
   const [open, setOpen] = useState(false);
-  const overdue = tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < todayISO());
-  const stuckIdeas = cards.filter((c) => c.stage === "idea");
-  const total = overdue.length + stuckIdeas.length;
+  const [dismissed, setDismissed] = useState(new Set());
+  const { value: changelogEntries } = useSupaChangelog();
+  const overdueAll = tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < todayISO());
+  const stuckIdeasAll = cards.filter((c) => c.stage === "idea");
+  const sevenDaysAgoTs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentChangelogAll = changelogEntries.filter((e) => new Date(e.createdAt).getTime() > sevenDaysAgoTs);
+  const overdue = overdueAll.filter((t) => !dismissed.has(`t_${t.id}`));
+  const stuckIdeas = stuckIdeasAll.filter((c) => !dismissed.has(`c_${c.id}`));
+  const recentChangelog = recentChangelogAll.filter((e) => !dismissed.has(`w_${e.id}`));
+  const total = overdue.length + stuckIdeas.length + recentChangelog.length;
+
+  const markAllRead = () => {
+    setDismissed(new Set([
+      ...overdueAll.map((t) => `t_${t.id}`),
+      ...stuckIdeasAll.map((c) => `c_${c.id}`),
+      ...recentChangelogAll.map((e) => `w_${e.id}`),
+    ]));
+  };
 
   return (
     <div className="relative">
@@ -4509,22 +4573,53 @@ function AdminNotificationBell({ cards, tasks, onNavigate }) {
         )}
       </button>
       {open && (
-        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-72 c-bg-surface border c-border rounded-xl shadow-2xl z-50 p-2 max-h-80 overflow-y-auto">
-          {total === 0 && <div className="fs-12 c-faint font-mono italic text-center py-6">Nothing needs attention.</div>}
-          {overdue.map((t) => (
-            <button key={t.id} onClick={() => { onNavigate("tasks"); setOpen(false); }}
-              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
-              <div className="fs-10 font-mono uppercase" style={{ color: "#E2725B" }}>Overdue</div>
-              <div className="fs-12 c-text">{t.title}{t.model ? ` — ${t.model}` : ""}</div>
-            </button>
-          ))}
-          {stuckIdeas.map((c) => (
-            <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
-              className="w-full text-left px-2.5 py-2 rounded-lg hover-bg-app transition-colors">
-              <div className="fs-10 font-mono uppercase c-accent">Idea, unclaimed</div>
-              <div className="fs-12 c-text">{c.title || "Untitled scene"}{c.model ? ` — ${c.model}` : ""}</div>
-            </button>
-          ))}
+        <div className="fixed left-3 right-3 top-14 sm:absolute sm:left-auto sm:top-full sm:right-0 sm:mt-2 sm:w-80 c-bg-surface border c-border rounded-xl shadow-2xl z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b c-border">
+            <div className="flex items-center gap-2">
+              <span className="fs-13 font-semibold c-text">Notifications</span>
+              {total > 0 && (
+                <span className="fs-9 font-mono font-bold px-1.5 py-0.5 rounded-full c-bg-accent c-onaccent">{total > 99 ? "99+" : total}</span>
+              )}
+            </div>
+            {total > 0 && (
+              <button onClick={markAllRead} className="fs-10 font-mono c-accent hover-accent-text tap">Mark all read</button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto p-2">
+            {total === 0 && <div className="fs-12 c-faint font-mono italic text-center py-6">Nothing needs attention.</div>}
+            {overdue.map((t) => (
+              <button key={t.id} onClick={() => { onNavigate("tasks"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Calendar size={16} style={{ color: "#E2725B" }} className="flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">Overdue</div>
+                  <div className="fs-11 c-muted truncate">{t.title}{t.model ? ` — ${t.model}` : ""}</div>
+                </div>
+                <span className="fs-9 font-mono c-faint flex-shrink-0">{fmtDay(t.dueDate)}</span>
+              </button>
+            ))}
+            {stuckIdeas.map((c) => (
+              <button key={c.id} onClick={() => { onNavigate("content"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Film size={16} className="c-accent flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">Idea, unclaimed</div>
+                  <div className="fs-11 c-muted truncate">{c.title || "Untitled scene"}{c.model ? ` — ${c.model}` : ""}</div>
+                </div>
+              </button>
+            ))}
+            {recentChangelog.map((e) => (
+              <button key={e.id} onClick={() => { onNavigate("whatsnew"); setOpen(false); }}
+                className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
+                <Megaphone size={16} className="c-accent flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 font-semibold c-text">What's New</div>
+                  <div className="fs-11 c-muted truncate">{e.title}</div>
+                </div>
+                <span className="fs-9 font-mono c-faint flex-shrink-0">{timeAgo(new Date(e.createdAt).getTime())}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -6394,7 +6489,6 @@ function App() {
           <GlobalSearch cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks}
             models={isAdmin ? agencyModels : models} trends={weeklyTrendReels} onNavigate={setView}
             trendsNavId="weeklytrends" showModels={isAdmin} showTrends={isAdmin} navItems={NAV} />
-          <ChangelogBell onNavigate={setView} currentView={currentView} />
           {session.role === "admin" && (
             <AdminNotificationBell cards={scopedCards} tasks={scopedTasks} onNavigate={setView} />
           )}
