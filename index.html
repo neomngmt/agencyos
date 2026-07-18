@@ -4294,17 +4294,18 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       // supabase-js returns edge function binary responses as a Blob.
       const rawBytes = data instanceof Blob ? await data.arrayBuffer() : data;
 
-      // Sanity check: a real WAV file starts with "RIFF". If it doesn't,
-      // something upstream (Groq or the edge function) likely returned an
-      // error body instead of audio.
-      const header = new Uint8Array(rawBytes.slice(0, 4));
-      const headerStr = String.fromCharCode(...header);
-      if (headerStr !== "RIFF") {
+      // Sanity check: a real MP3 starts with an ID3 tag or an MPEG frame
+      // sync byte. If it doesn't, something upstream (OpenAI or the edge
+      // function) likely returned an error body instead of audio.
+      const header = new Uint8Array(rawBytes.slice(0, 3));
+      const isId3 = header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33; // "ID3"
+      const isMpegSync = header[0] === 0xFF && (header[1] & 0xE0) === 0xE0;
+      if (!isId3 && !isMpegSync) {
         const text = new TextDecoder().decode(rawBytes).slice(0, 300);
         throw new Error(`unexpected response (${rawBytes.byteLength} bytes): ${text || "empty"}`);
       }
 
-      const blob = new Blob([rawBytes], { type: "audio/wav" });
+      const blob = new Blob([rawBytes], { type: "audio/mpeg" });
       const url = URL.createObjectURL(blob);
 
       // Reuse the single persistent <audio> element created on the user's
@@ -4420,7 +4421,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     } catch (e) {
       if (myRequestId !== requestIdRef.current) return;
       const detail = e?.message || e?.context?.error || (typeof e === "string" ? e : JSON.stringify(e));
-      setMessages((m) => [...m, { role: "neo", text: `Couldn't reach Neo — ${detail || "unknown error"}. Check the clever-service function and GROQ_API_KEY secret in Supabase.` }]);
+      setMessages((m) => [...m, { role: "neo", text: `Couldn't reach Neo — ${detail || "unknown error"}. Check the clever-service function and OPENAI_API_KEY secret in Supabase.` }]);
     } finally {
       if (myRequestId === requestIdRef.current) {
         thinkingRef.current = false;
