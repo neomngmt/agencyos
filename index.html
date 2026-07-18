@@ -651,7 +651,7 @@ function useSupaSettings(fallback) {
     try {
       const { data, error } = await supabaseClient.from("settings").select("*").eq("id", 1).maybeSingle();
       if (error) throw error;
-      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS, inflowwApiKey: data.infloww_api_key || "" } : fallback);
+      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS, inflowwApiKey: data.infloww_api_key || "", monthlyRevenueGoal: data.monthly_revenue_goal != null ? Number(data.monthly_revenue_goal) : (fallback.monthlyRevenueGoal || 20000) } : fallback);
     } catch (e) {
       console.error("load failed for settings", e);
       setValue(fallback);
@@ -664,7 +664,7 @@ function useSupaSettings(fallback) {
   const persist = async (next) => {
     setValue(next);
     try {
-      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS, infloww_api_key: next.inflowwApiKey || "" });
+      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS, infloww_api_key: next.inflowwApiKey || "", monthly_revenue_goal: next.monthlyRevenueGoal || 20000 });
       if (error) throw error;
     } catch (e) {
       console.error("save failed for settings", e);
@@ -3543,12 +3543,15 @@ function CreatorSettingsPanel({ model, persistModels, models }) {
 function SettingsPanel({ settings, persistSettings, integrations, persistIntegrations, agency }) {
   const [pinCZ, setPinCZ] = useState(settings.adminPinCZ || "");
   const [pinUS, setPinUS] = useState(settings.adminPinUS || "");
+  const [monthlyGoal, setMonthlyGoal] = useState(settings.monthlyRevenueGoal || 20000);
   const [saved, setSaved] = useState(false);
+
   const save = async () => {
     await persistSettings({
       ...settings,
       adminPinCZ: pinCZ.replace(/\D/g, "").slice(0, 4),
       adminPinUS: pinUS.replace(/\D/g, "").slice(0, 4),
+      monthlyRevenueGoal: Math.max(0, Number(monthlyGoal) || 0),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -3577,6 +3580,15 @@ function SettingsPanel({ settings, persistSettings, integrations, persistIntegra
             <input value={pinUS} onChange={(e) => setPinUS(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="e.g. 1234"
               className="w-full c-bg-surface border c-border rounded-lg px-2.5 py-2.5 text-sm c-text outline-none focus-border-accent" />
           </div>
+        </div>
+        <div className="max-w-sm mb-4">
+          <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Monthly revenue goal (Neo page)</label>
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 c-faint text-sm">$</span>
+            <input type="number" value={monthlyGoal} onChange={(e) => setMonthlyGoal(e.target.value)} placeholder="20000"
+              className="w-full c-bg-surface border c-border rounded-lg pl-6 pr-2.5 py-2.5 text-sm c-text outline-none focus-border-accent" />
+          </div>
+          <p className="fs-10 c-faint font-mono mt-1">Shown as "Primary Objective" under Neo's orb, combined Free+Paid revenue across all models.</p>
         </div>
         <button onClick={save}
           className="py-2.5 px-4 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase tracking-wide font-semibold hover-bg-accent2">
@@ -4109,28 +4121,20 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     mount.innerHTML = "";
     mount.appendChild(renderer.domElement);
 
-    // JARVIS-style density: several nested wireframe shells at different
-    // detail levels, each spinning on its own axis/speed, layered together
-    // rather than a single mesh — this is what gives the "dense gyroscope"
-    // look instead of one clean sphere.
-    const SHELLS = [
-      { detail: 1, radius: 1.00, opacity: 0.55, axis: new THREE.Vector3(0.2, 1, 0.1), speed: 1.0 },
-      { detail: 2, radius: 0.92, opacity: 0.35, axis: new THREE.Vector3(1, 0.3, 0.5), speed: -0.7 },
-      { detail: 0, radius: 1.10, opacity: 0.22, axis: new THREE.Vector3(0.4, -0.6, 1), speed: 0.45 },
-    ];
-    const shellMeshes = SHELLS.map((cfg) => {
-      const geo = new THREE.IcosahedronGeometry(cfg.radius, cfg.detail === 0 ? 24 : cfg.detail === 1 ? 3 : 2);
-      const base = geo.attributes.position.array.slice();
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x8effb5, wireframe: true, transparent: true,
-        opacity: cfg.opacity, blending: THREE.AdditiveBlending,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      scene.add(mesh);
-      return { mesh, geo, mat, base, cfg };
-    });
+    const geometry = new THREE.IcosahedronGeometry(1, 24);
+    const basePositions = geometry.attributes.position.array.slice();
 
-    // Soft glow sphere behind everything
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x8effb5,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // Soft glow sphere behind the wireframe
     const glowGeo = new THREE.SphereGeometry(1.15, 32, 32);
     const glowMat = new THREE.MeshBasicMaterial({
       color: 0x12b34c, transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending,
@@ -4138,41 +4142,10 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     const glowMesh = new THREE.Mesh(glowGeo, glowMat);
     scene.add(glowMesh);
 
-    // Crackling electric arcs — jittery lightning bolts jumping between
-    // random points on the sphere surface, regenerated on a timer so it
-    // reads as live electricity rather than a static shape.
-    const ARC_COUNT = 9;
-    const ARC_SEGMENTS = 10;
-    const randSpherePoint = () => {
-      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
-      return v.normalize().multiplyScalar(1.02);
-    };
-    const buildArcPositions = (a, b) => {
-      const positions = new Float32Array((ARC_SEGMENTS + 1) * 3);
-      for (let i = 0; i <= ARC_SEGMENTS; i++) {
-        const f = i / ARC_SEGMENTS;
-        const p = a.clone().lerp(b, f);
-        p.multiplyScalar(1 + (Math.random() - 0.5) * 0.12 * Math.sin(f * Math.PI));
-        positions[i * 3] = p.x; positions[i * 3 + 1] = p.y; positions[i * 3 + 2] = p.z;
-      }
-      return positions;
-    };
-    const arcMat = new THREE.LineBasicMaterial({
-      color: 0xdfffe8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
-    });
-    const arcs = Array.from({ length: ARC_COUNT }, () => {
-      const geo = new THREE.BufferGeometry();
-      const a = randSpherePoint(), b = randSpherePoint();
-      geo.setAttribute("position", new THREE.BufferAttribute(buildArcPositions(a, b), 3));
-      const mat = arcMat.clone();
-      const line = new THREE.Line(geo, mat);
-      scene.add(line);
-      return { line, geo, mat, life: Math.random(), speed: 1.2 + Math.random() * 1.6 };
-    });
-
     const noise = new SimplexNoise3D(7);
     let raf;
     const clock = new THREE.Clock();
+    const scaleVec = new THREE.Vector3(1, 1, 1);
 
     const animate = () => {
       const { thinking: th, speaking: sp, listening: li } = stateRef.current;
@@ -4182,54 +4155,37 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       const sinceBump = Date.now() - (speakBumpRef?.current || 0);
       const bump = sp && sinceBump < 220 ? (1 - sinceBump / 220) : 0;
       const liveAmp = sp ? (liveAmpRef?.current || 0) : 0;
-      // Fast flicker so speaking reads as energetic/alive, not just a slow swell
-      const flicker = sp ? (0.5 + 0.5 * Math.sin(elapsed * 26)) : 0;
 
-      const noiseSpeed = th ? 0.35 : sp ? 0.3 : li ? 0.18 : 0.08;
-      const noiseAmp = 0.08 + bump * 0.22 + liveAmp * (0.3 + flicker * 0.18) + (active ? 0.03 : 0);
+      const noiseSpeed = th ? 0.35 : sp ? 0.28 : li ? 0.18 : 0.08;
+      const noiseAmp = 0.10 + bump * 0.16 + liveAmp * 0.22 + (active ? 0.04 : 0);
       const t = elapsed * noiseSpeed;
 
-      shellMeshes.forEach(({ mesh, geo, mat, base, cfg }) => {
-        const posAttr = geo.attributes.position;
-        const arr = posAttr.array;
-        for (let i = 0; i < arr.length; i += 3) {
-          const x = base[i], y = base[i + 1], z = base[i + 2];
-          const n = noise.noise(x * 1.6 + t, y * 1.6 + t, z * 1.6 + t);
-          const scale = 1 + n * noiseAmp;
-          arr[i] = x * scale;
-          arr[i + 1] = y * scale;
-          arr[i + 2] = z * scale;
-        }
-        posAttr.needsUpdate = true;
-        geo.computeVertexNormals();
+      const posAttr = geometry.attributes.position;
+      const arr = posAttr.array;
+      for (let i = 0; i < arr.length; i += 3) {
+        const x = basePositions[i], y = basePositions[i + 1], z = basePositions[i + 2];
+        const n = noise.noise(x * 1.6 + t, y * 1.6 + t, z * 1.6 + t);
+        const scale = 1 + n * noiseAmp;
+        arr[i] = x * scale;
+        arr[i + 1] = y * scale;
+        arr[i + 2] = z * scale;
+      }
+      posAttr.needsUpdate = true;
+      geometry.computeVertexNormals();
 
-        const baseSpeed = (th ? 0.006 : sp ? 0.005 : li ? 0.003 : 0.0012) * cfg.speed;
-        mesh.rotateOnAxis(cfg.axis.clone().normalize(), baseSpeed + liveAmp * 0.01 * Math.sign(cfg.speed));
+      mesh.rotation.y += th ? 0.006 : sp ? 0.0045 : li ? 0.003 : 0.0015;
+      mesh.rotation.x += 0.0006;
 
-        mat.opacity = cfg.opacity * (1 + bump * 0.6 + liveAmp * (0.5 + flicker * 0.5));
-      });
+      // Gentle, smoothed scale — no sudden jump the instant speaking starts.
+      // A slow lerp factor (0.05) means it eases in/out over roughly half a
+      // second instead of snapping, so it "pops" only a little.
+      const targetScale = active ? 1.05 + liveAmp * 0.04 : 1;
+      scaleVec.x += (targetScale - scaleVec.x) * 0.05;
+      scaleVec.y = scaleVec.z = scaleVec.x;
+      mesh.scale.copy(scaleVec);
+      glowMesh.scale.copy(scaleVec);
 
-      const targetScale = active ? 1.06 + liveAmp * 0.07 : 1;
-      const s = new THREE.Vector3(targetScale, targetScale, targetScale);
-      shellMeshes.forEach(({ mesh }) => mesh.scale.lerp(s, 0.1));
-      glowMesh.scale.lerp(s, 0.1);
-      glowMat.opacity = 0.06 + bump * 0.05 + liveAmp * 0.08;
-
-      // Electric arcs: each one flashes bright then fades, then jumps to a
-      // new random pair of points — faster/brighter while Neo is speaking.
-      const arcLifeSpeed = 0.012 * (sp ? 2.6 + liveAmp * 3 : th ? 1.6 : li ? 1.1 : 0.6);
-      arcs.forEach((arc) => {
-        arc.life += arcLifeSpeed * arc.speed;
-        if (arc.life >= 1) {
-          arc.life = 0;
-          const a = randSpherePoint(), b = randSpherePoint();
-          arc.geo.setAttribute("position", new THREE.BufferAttribute(buildArcPositions(a, b), 3));
-        }
-        // quick rise, slower fade — reads as a crackle, not a fade in/out pulse
-        const flash = arc.life < 0.15 ? arc.life / 0.15 : Math.max(0, 1 - (arc.life - 0.15) / 0.85);
-        arc.mat.opacity = flash * (0.5 + bump * 0.4 + liveAmp * 0.5);
-        arc.line.scale.copy(s);
-      });
+      material.opacity = 0.45 + bump * 0.2 + liveAmp * 0.15;
 
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
@@ -4238,8 +4194,8 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
 
     return () => {
       cancelAnimationFrame(raf);
-      arcs.forEach(({ geo, mat }) => { geo.dispose(); mat.dispose(); });
-      shellMeshes.forEach(({ geo, mat }) => { geo.dispose(); mat.dispose(); });
+      geometry.dispose();
+      material.dispose();
       glowGeo.dispose();
       glowMat.dispose();
       renderer.dispose();
@@ -4453,32 +4409,35 @@ function NeoClock() {
 
 function CircuitBoardBG() {
   return (
-    <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: "none" }}>
+    <div className="fixed inset-0" style={{ zIndex: 0, pointerEvents: "none", background: "#050a06" }}>
       <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
         <defs>
-          <pattern id="circuitPattern" width="140" height="140" patternUnits="userSpaceOnUse">
-            <path d="M0 20 H50 V60 H100" fill="none" stroke="rgba(57,230,115,0.10)" strokeWidth="1" />
-            <path d="M140 100 H90 V50 H40" fill="none" stroke="rgba(57,230,115,0.08)" strokeWidth="1" />
-            <path d="M20 0 V40 H60" fill="none" stroke="rgba(57,230,115,0.09)" strokeWidth="1" />
-            <circle cx="50" cy="60" r="2.5" fill="rgba(57,230,115,0.18)" />
-            <circle cx="100" cy="20" r="2" fill="rgba(57,230,115,0.14)" />
-            <circle cx="90" cy="50" r="2" fill="rgba(57,230,115,0.14)" />
-            <circle cx="20" cy="40" r="2" fill="rgba(57,230,115,0.14)" />
+          <pattern id="circuitPattern" width="180" height="180" patternUnits="userSpaceOnUse">
+            <path d="M0 30 H70 V90 H150" fill="none" stroke="rgba(57,230,115,0.28)" strokeWidth="1.5" />
+            <path d="M180 130 H110 V70 H50" fill="none" stroke="rgba(57,230,115,0.22)" strokeWidth="1.5" />
+            <path d="M30 0 V50 H90 V0" fill="none" stroke="rgba(57,230,115,0.24)" strokeWidth="1.5" />
+            <path d="M130 180 V140 H60" fill="none" stroke="rgba(57,230,115,0.18)" strokeWidth="1.5" />
+            <circle cx="70" cy="90" r="3.5" fill="rgba(120,255,160,0.5)" />
+            <circle cx="150" cy="30" r="3" fill="rgba(120,255,160,0.4)" />
+            <circle cx="110" cy="70" r="3" fill="rgba(120,255,160,0.4)" />
+            <circle cx="30" cy="50" r="3" fill="rgba(120,255,160,0.4)" />
+            <circle cx="90" cy="0" r="2.5" fill="rgba(120,255,160,0.35)" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#circuitPattern)" />
       </svg>
       {/* corner brackets, like an instrument-panel frame */}
       {[
-        { top: 24, left: 24, rotate: 0 },
-        { top: 24, right: 24, rotate: 90 },
-        { bottom: 24, right: 24, rotate: 180 },
-        { bottom: 24, left: 24, rotate: 270 },
+        { top: 20, left: 20, rotate: 0 },
+        { top: 20, right: 20, rotate: 90 },
+        { bottom: 20, right: 20, rotate: 180 },
+        { bottom: 20, left: 20, rotate: 270 },
       ].map((pos, i) => (
-        <svg key={i} width="70" height="70" viewBox="0 0 70 70"
-          style={{ position: "absolute", ...pos, transform: `rotate(${pos.rotate}deg)` }}>
-          <path d="M2 30 V2 H30" fill="none" stroke="rgba(57,230,115,0.4)" strokeWidth="1.5" />
-          <circle cx="2" cy="2" r="3" fill="rgba(120,255,160,0.7)" />
+        <svg key={i} width="120" height="120" viewBox="0 0 120 120"
+          style={{ position: "absolute", ...pos, transform: `rotate(${pos.rotate}deg)`, filter: "drop-shadow(0 0 4px rgba(57,230,115,0.5))" }}>
+          <path d="M2 50 V2 H50" fill="none" stroke="rgba(57,230,115,0.6)" strokeWidth="2" />
+          <path d="M14 2 V14 H2" fill="none" stroke="rgba(57,230,115,0.35)" strokeWidth="1.5" />
+          <circle cx="2" cy="2" r="4" fill="rgba(180,255,205,0.9)" />
         </svg>
       ))}
     </div>
@@ -4597,7 +4556,7 @@ function NeoBootSequence({ onDone }) {
   );
 }
 
-function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends, bufferDailyStats, inflowwDailyStats }) {
+function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends, bufferDailyStats, inflowwDailyStats, settings }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [queriesToday, setQueriesToday] = useState(0);
@@ -4918,16 +4877,14 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const openTasksCount = tasks.filter((t) => t.status !== "done").length;
   const relevantTrends = trends.filter((t) => (agency === "US" ? t.showUS : t.showCZ));
 
-  // ---- financial strip: this calendar month's revenue vs a goal ----
+  // ---- financial strip: this calendar month's real Infloww revenue (all
+  // models, Free + Paid combined) vs a fixed $20k agency goal ----
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const statsThisMonth = stats.filter((s) => (s.weekOf || "") >= monthStart);
-  const monthRevenue = statsThisMonth.reduce((sum, s) => sum + (s.ofEarnings || 0), 0);
-  const latestGoalPerModel = models.map((m) => {
-    const mine = stats.filter((s) => s.model === m.name).sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
-    return mine[0]?.earningsGoal || 0;
-  });
-  const monthGoal = Math.max(1, latestGoalPerModel.reduce((a, b) => a + b, 0) * 4.3);
+  const agencyModelNames = new Set(models.map((m) => m.name));
+  const inflowwThisMonth = (inflowwDailyStats || []).filter((r) => agencyModelNames.has(r.model) && r.statDate >= monthStart);
+  const monthRevenue = inflowwThisMonth.reduce((sum, r) => sum + (r.earningsNet || 0), 0);
+  const monthGoal = (settings && settings.monthlyRevenueGoal) || 20000;
   const monthPct = Math.min(100, Math.round((monthRevenue / monthGoal) * 100));
   const dayOfMonth = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -4960,7 +4917,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   }
 
   return (
-    <div className="-m-6 p-6" style={{ background: "radial-gradient(ellipse at 50% 0%, #07090a 0%, #050605 70%)", minHeight: "calc(100vh - 160px)", fontFamily: "'JetBrains Mono', monospace" }}>
+    <div className="-m-6 p-6" style={{ background: "rgba(3,8,5,0.72)", minHeight: "calc(100vh - 160px)", fontFamily: "'JetBrains Mono', monospace" }}>
       {/* mini topbar */}
       <div className="flex items-center justify-between pb-3 mb-5" style={{ borderBottom: `1px solid ${border}` }}>
         <div className="font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88`, fontSize: "20px" }}>
@@ -5246,7 +5203,7 @@ function NotificationBell({ model, cards, tasks, trends, agency, models, persist
                 className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
                 <Megaphone size={16} className="c-accent flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="fs-12 font-semibold c-text">What's New</div>
+                  <div className="fs-12 font-semibold c-text">OF News</div>
                   <div className="fs-11 c-muted truncate">{e.title}</div>
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -5353,7 +5310,7 @@ function AdminNotificationBell({ cards, tasks, onNavigate }) {
                 className="w-full flex items-start gap-2.5 text-left px-2.5 py-2.5 rounded-lg hover-bg-app transition-colors">
                 <Megaphone size={16} className="c-accent flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="fs-12 font-semibold c-text">What's New</div>
+                  <div className="fs-12 font-semibold c-text">OF News</div>
                   <div className="fs-11 c-muted truncate">{e.title}</div>
                 </div>
                 <span className="fs-9 font-mono c-faint flex-shrink-0">{timeAgo(new Date(e.createdAt).getTime())}</span>
@@ -5811,24 +5768,35 @@ function useSupaOfDailyStats() {
 function useSupaChangelog() {
   const [value, setValue] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabaseClient.from("changelog").select("*").order("created_at", { ascending: false });
-        if (error) throw error;
-        setValue((data || []).map((r) => ({
-          id: r.id, title: r.title, description: r.description || "",
-          category: r.category || "improvement", createdAt: r.created_at,
-        })));
-      } catch (e) {
-        console.error("load failed for changelog", e);
-        setValue([]);
-      }
-      setLoading(false);
-    })();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabaseClient.from("changelog").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      setValue((data || []).map((r) => ({
+        id: r.id, title: r.title, description: r.description || "",
+        category: r.category || "improvement", createdAt: r.created_at,
+      })));
+    } catch (e) {
+      console.error("load failed for changelog", e);
+      setValue([]);
+    }
+    setLoading(false);
   }, []);
-  return { value, loading };
+
+  useEffect(() => { load(); }, [load]);
+
+  const addEntry = async ({ title, description, category }) => {
+    const id = `cl_manual_${Date.now()}`;
+    const { error } = await supabaseClient.from("changelog").insert({
+      id, title, description: description || "", category: category || "improvement",
+    });
+    if (error) throw error;
+    await load();
+  };
+
+  return { value, loading, reload: load, addEntry };
 }
 
 const CHANGELOG_SEEN_KEY = "agencyos_changelog_last_seen";
@@ -5843,20 +5811,20 @@ function WhatsNewPage() {
   }, [entries]);
 
   const categoryStyle = {
-    feature: { label: "New", bg: "rgba(18,179,76,0.16)", color: "#39e673" },
-    fix: { label: "Fix", bg: "rgba(216,90,48,0.16)", color: "#e0876a" },
-    improvement: { label: "Improved", bg: "rgba(120,140,255,0.16)", color: "#9aa8ff" },
+    feature: { label: "Big", bg: "rgba(18,179,76,0.16)", color: "#39e673" },
+    fix: { label: "Data", bg: "rgba(216,90,48,0.16)", color: "#e0876a" },
+    improvement: { label: "Trend", bg: "rgba(120,140,255,0.16)", color: "#9aa8ff" },
   };
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   return (
     <div className="max-w-2xl">
-      <p className="fs-13 c-muted mb-6">Updates and changes to Zion OS itself.</p>
+      <p className="fs-13 c-muted mb-6">News and developments from the OnlyFans / creator economy world.</p>
 
       {loading && <div className="fs-13 c-muted">Loading...</div>}
       {!loading && !entries.length && (
         <div className="c-bg-surface border c-border rounded-xl px-4 py-6 text-center fs-13 c-muted">
-          No updates logged yet.
+          No news yet.
         </div>
       )}
 
@@ -7068,7 +7036,7 @@ const NAV_ADMIN = [
   { id: "reelsorter", label: "Reels Sorter", icon: Repeat },
   { id: "neo", label: "Neo", icon: Sparkles },
   { id: "models", label: "Model Manager", icon: Users },
-  { id: "whatsnew", label: "What's New", icon: Megaphone },
+  { id: "whatsnew", label: "OF News", icon: Megaphone },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -7078,7 +7046,7 @@ const NAV_CREATOR = [
   { id: "calendar", label: "My Calendar", icon: Calendar },
   { id: "tasks", label: "My Tasks", icon: CheckSquare },
   { id: "viral", label: "Viral Feed", icon: Zap },
-  { id: "whatsnew", label: "What's New", icon: Megaphone },
+  { id: "whatsnew", label: "OF News", icon: Megaphone },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -7132,7 +7100,7 @@ function App() {
   const { value: bufferDailyStats, loading: bufferDailyStatsLoading } = useSupaBufferStats();
   const { value: ofDailyStats, loading: ofDailyStatsLoading } = useSupaOfDailyStats();
   const { value: inflowwDailyStats, loading: inflowwDailyStatsLoading } = useSupaInflowwDailyStats();
-  const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "" });
+  const { value: settings, loading: settingsLoading, persist: persistSettings } = useSupaSettings({ adminPinCZ: "2748", adminPinUS: "1234", inflowwApiKey: "", monthlyRevenueGoal: 20000 });
   const { value: integrations, loading: integrationsLoading, persist: persistIntegrations } = useSupaTable("integrations", "id", DEFAULT_INTEGRATIONS, integrationsToJS, integrationsToDB);
   const { value: weeklyTrendReels, loading: weeklyTrendReelsLoading, reload: reloadWeeklyTrendReels } = useSupaTable("weekly_trend_reels", "id", [], weeklyTrendReelsToJS, weeklyTrendReelsToDB);
   const [session, setSession] = useState(() => loadSavedSession());
@@ -7246,7 +7214,7 @@ function App() {
           <div className="relative z-10 h-full overflow-y-auto px-4 md:px-6 py-4 md:py-6">
             <NeoPage agency={session.agency} session={session} onNavigate={setView}
               onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
-              cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} inflowwDailyStats={inflowwDailyStats} />
+              cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} inflowwDailyStats={inflowwDailyStats} settings={settings} />
           </div>
         </div>
       ) : (
