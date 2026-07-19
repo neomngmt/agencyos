@@ -475,7 +475,7 @@ const PLATFORMS = [
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const fontImport = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,700&family=Dancing+Script:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,700&family=Dancing+Script:wght@600;700&family=Orbitron:wght@700;800&display=swap');
 
 :root {
   --bg-app: #07090a;
@@ -584,8 +584,9 @@ button.c-bg-accent.rounded-xl,
 }
 @media (min-width: 641px) {
   .login-desktop-scale { transform: scale(1.1); }
-  .neo-orb-size { max-width: 950px !important; }
+  .neo-mesh-scale { transform: scale(0.9); }
 }
+canvas { display: block; }
 .nav-neo-item { position: relative; }
 .nav-neo-item:hover {
   color: #39e673 !important;
@@ -769,7 +770,7 @@ function useSupaSettings(fallback) {
     try {
       const { data, error } = await supabaseClient.from("settings").select("*").eq("id", 1).maybeSingle();
       if (error) throw error;
-      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS, inflowwApiKey: data.infloww_api_key || "", monthlyRevenueGoal: data.monthly_revenue_goal != null ? Number(data.monthly_revenue_goal) : (fallback.monthlyRevenueGoal || 20000) } : fallback);
+      setValue(data ? { adminPinCZ: data.admin_pin_cz || fallback.adminPinCZ, adminPinUS: data.admin_pin_us || fallback.adminPinUS, inflowwApiKey: data.infloww_api_key || "", monthlyRevenueGoal: data.monthly_revenue_goal != null ? Number(data.monthly_revenue_goal) : (fallback.monthlyRevenueGoal || 20000), neoOrbLayout: data.neo_orb_layout ? JSON.parse(data.neo_orb_layout) : (fallback.neoOrbLayout || null) } : fallback);
     } catch (e) {
       console.error("load failed for settings", e);
       setValue(fallback);
@@ -782,7 +783,7 @@ function useSupaSettings(fallback) {
   const persist = async (next) => {
     setValue(next);
     try {
-      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS, infloww_api_key: next.inflowwApiKey || "", monthly_revenue_goal: next.monthlyRevenueGoal || 20000 });
+      const { error } = await supabaseClient.from("settings").upsert({ id: 1, admin_pin_cz: next.adminPinCZ, admin_pin_us: next.adminPinUS, infloww_api_key: next.inflowwApiKey || "", monthly_revenue_goal: next.monthlyRevenueGoal || 20000, neo_orb_layout: next.neoOrbLayout ? JSON.stringify(next.neoOrbLayout) : null });
       if (error) throw error;
     } catch (e) {
       console.error("save failed for settings", e);
@@ -835,6 +836,7 @@ const modelsToJS = (r) => ({
   inflowwCreatorIdFree: r.infloww_creator_id_free || "", inflowwCreatorIdPaid: r.infloww_creator_id_paid || "",
   notifLastSeen: r.notif_last_seen ? new Date(r.notif_last_seen).getTime() : 0,
   inspoProfiles: Array.isArray(r.inspo_profiles) ? r.inspo_profiles : (r.inspo_profiles ? JSON.parse(r.inspo_profiles) : []),
+  monthlyGoal: r.monthly_goal != null ? Number(r.monthly_goal) : null,
 });
 const modelsToDB = (m) => ({
   name: m.name, note: m.note || "", pin: m.pin || "", onboarded: !!m.onboarded,
@@ -850,6 +852,7 @@ const modelsToDB = (m) => ({
   infloww_creator_id_free: m.inflowwCreatorIdFree || "", infloww_creator_id_paid: m.inflowwCreatorIdPaid || "",
   notif_last_seen: m.notifLastSeen ? new Date(m.notifLastSeen).toISOString() : null,
   inspo_profiles: m.inspoProfiles || [],
+  monthly_goal: m.monthlyGoal != null && m.monthlyGoal !== "" ? Number(m.monthlyGoal) : null,
 });
 
 const cardsToJS = (r) => ({
@@ -1419,6 +1422,10 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
 
         <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Niche / persona note</label>
         <input value={form.note || ""} onChange={(e) => set("note", e.target.value)}
+          className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text mb-3 outline-none focus-border-accent" />
+
+        <label className="block fs-10 uppercase tracking-wide c-muted font-mono mb-1">Monthly revenue goal ($) — shown to her on the Neo page instead of the agency-wide default</label>
+        <input type="number" value={form.monthlyGoal ?? ""} onChange={(e) => set("monthlyGoal", e.target.value === "" ? null : e.target.value)} placeholder="leave blank to use the agency default"
           className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text mb-3 outline-none focus-border-accent" />
 
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -2031,7 +2038,7 @@ function CalendarView({ cards, tasks, onNavigate, restrictModel }) {
 
 const LANDING_PAGE_CSS = `
 
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Dancing+Script:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,600;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Dancing+Script:wght@600;700&family=Orbitron:wght@700;800&display=swap');
 
 :root{
   --lp-bg: #07090a;
@@ -4400,7 +4407,7 @@ function NeoOrbLayered({ thinking, speaking, listening, liveAmpRef, onClick }) {
   return (
     <div ref={mountRef} onClick={onClick}
       className="mx-auto cursor-pointer"
-      style={{ width: "100%", height: "100%", aspectRatio: "1 / 1" }} />
+      style={{ width: "100%", height: "100%" }} />
   );
 }
 
@@ -4423,7 +4430,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     if (!window.THREE) return;
     const THREE = window.THREE;
     const mount = mountRef.current;
-    const size = Math.min(mount.clientWidth || 950, 950);
+    const size = Math.min(mount.clientWidth || 650, 650);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
@@ -4449,6 +4456,17 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       }
     });
     resizeObserver.observe(mount);
+    // Safety net: force a re-measure shortly after mount, in case the very
+    // first ResizeObserver callback fired before the surrounding flex
+    // layout had finished settling into its final size.
+    const settleTimer = setTimeout(() => {
+      const w = mount.clientWidth, h = mount.clientHeight;
+      if (w > 0 && h > 0) {
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+    }, 150);
 
     const geometry = new THREE.IcosahedronGeometry(1, 24);
     const basePositions = geometry.attributes.position.array.slice();
@@ -4494,7 +4512,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // than thinking/speaking so it clearly reads as "waiting for you to
       // talk."
       const pulse = active ? 0.5 + 0.5 * Math.sin(pulsePhase) : 0;
-      const listenSwell = li ? pulse * 0.11 : 0;
+      const listenSwell = li ? pulse * 0.4 : 0;
 
       const noiseSpeed = th ? 0.3 : sp ? 0.24 : li ? 0.16 : 0.08;
       noisePhase += noiseSpeed * delta;
@@ -4537,7 +4555,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // Gentle, smoothed scale — slow lerp so it eases toward its target
       // rather than snapping, on every transition.
       const targetScale = (active ? 1.04 + pulse * 0.015 : 1) + burstOvershoot + voiceSwell + listenSwell;
-      scaleVec.x += (targetScale - scaleVec.x) * 0.12;
+      scaleVec.x += (targetScale - scaleVec.x) * 0.2;
       scaleVec.y = scaleVec.z = scaleVec.x;
       mesh.scale.copy(scaleVec);
 
@@ -4551,7 +4569,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
         // CSS element inside a box that can clip it if it grows too far
         // (unlike the mesh, which has real camera safety margin built in),
         // so cap it well before it could ever reach the container edge.
-        const glowScale = Math.min(scaleVec.x, 1.06);
+        const glowScale = Math.min(scaleVec.x, 1.35);
         const glowOpacity = 0.75 + pulse * 0.25 + voiceSwell * 0.8;
         glowElRef.current.style.transform = `scale(${glowScale})`;
         glowElRef.current.style.opacity = glowOpacity;
@@ -4565,6 +4583,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     return () => {
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
+      clearTimeout(settleTimer);
       geometry.dispose();
       material.dispose();
       renderer.dispose();
@@ -4574,8 +4593,8 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
 
   return (
     <div ref={mountRef} onClick={onClick}
-      className="mx-auto cursor-pointer flex items-center justify-center"
-      style={{ width: "100%", maxWidth: 340, aspectRatio: "1 / 1" }} />
+      className="mx-auto cursor-pointer flex items-center justify-center neo-mesh-scale"
+      style={{ width: "100%", height: "100%" }} />
   );
 }
 
@@ -4841,22 +4860,6 @@ function CircuitBoardBG() {
           </g>
         ))}
       </svg>
-      {/* corner brackets, like an instrument-panel frame — desktop only, look cramped/messy at phone size */}
-      <div className="hidden sm:block">
-        {[
-          { top: 20, left: 20, rotate: 0 },
-          { top: 20, right: 20, rotate: 90 },
-          { bottom: 20, right: 20, rotate: 180 },
-          { bottom: 20, left: 20, rotate: 270 },
-        ].map((pos, i) => (
-          <svg key={i} width="120" height="120" viewBox="0 0 120 120"
-            style={{ position: "absolute", ...pos, transform: `rotate(${pos.rotate}deg)`, filter: "drop-shadow(0 0 4px rgba(57,230,115,0.5))" }}>
-            <path d="M2 50 V2 H50" fill="none" stroke="rgba(57,230,115,0.6)" strokeWidth="2" />
-            <path d="M14 2 V14 H2" fill="none" stroke="rgba(57,230,115,0.35)" strokeWidth="1.5" />
-            <circle cx="2" cy="2" r="4" fill="rgba(180,255,205,0.9)" />
-          </svg>
-        ))}
-      </div>
     </div>
   );
 }
@@ -4973,13 +4976,52 @@ function NeoBootSequence({ onDone }) {
   );
 }
 
-function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends, bufferDailyStats, inflowwDailyStats, settings }) {
+function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models, stats, reels, trends, bufferDailyStats, inflowwDailyStats, settings, persistSettings }) {
   const [messages, setMessages] = useState([]);
+  const [winWidth, setWinWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  useEffect(() => {
+    const onResize = () => setWinWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const isDesktopViewport = winWidth >= 641;
+  const [neoMemories, setNeoMemories] = useState([]);
+  const loadNeoMemories = useCallback(async () => {
+    try {
+      let query = supabaseClient.from("neo_memory").select("*").eq("agency", agency).order("created_at", { ascending: false }).limit(50);
+      if (session.role === "creator") query = query.or(`model.eq.${session.name},model.is.null`);
+      const { data, error } = await query;
+      if (error) throw error;
+      setNeoMemories(data || []);
+    } catch (e) {
+      console.error("failed to load neo memories", e);
+    }
+  }, [agency, session.role, session.name]);
+  useEffect(() => { loadNeoMemories(); }, [loadNeoMemories]);
   const [thinking, setThinking] = useState(false);
+  const [showThinkingLabel, setShowThinkingLabel] = useState(false);
+  useEffect(() => {
+    if (!thinking) { setShowThinkingLabel(false); return; }
+    const id = setTimeout(() => setShowThinkingLabel(true), 500);
+    return () => clearTimeout(id);
+  }, [thinking]);
   const [queriesToday, setQueriesToday] = useState(0);
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState("");
   const greetedRef = useRef(false);
+
+  // Stop everything the moment this page unmounts (Leave Neo, or navigating
+  // away any other way) — otherwise TTS audio and/or the mic keep running
+  // in the background since they're plain browser objects with their own
+  // lifecycle, not tied to React unmounting them automatically.
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) { try { audioRef.current.pause(); } catch {} }
+      if (activeOneShotRef.current) { try { activeOneShotRef.current.stop(); } catch {} }
+      if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch {} }
+      activeListenRef.current = false;
+    };
+  }, []);
 
   // Auto-greeting: the moment this page mounts (right after the boot
   // sequence clears), Neo speaks first instead of waiting to be clicked —
@@ -5134,6 +5176,25 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
     setThinking(true);
     const myRequestId = ++requestIdRef.current;
     setMessages((m) => [...m, { role: "user", text }]);
+
+    // Memory: if the person explicitly asked Neo to remember something,
+    // save it as its own fact — scoped to this creator if she said it,
+    // or agency-wide if the Boss said it — and re-load so it's available
+    // in context on this very request too.
+    const rememberMatch = text.match(/\b(?:remember|pamatuj(?:\s+si)?|zapamatuj(?:\s+si)?)\b\s*(?:that|,|:)?\s*(.+)/i);
+    if (rememberMatch && rememberMatch[1] && rememberMatch[1].trim().length > 2) {
+      try {
+        await supabaseClient.from("neo_memory").insert({
+          agency,
+          model: session.role === "creator" ? session.name : null,
+          content: rememberMatch[1].trim(),
+        });
+        await loadNeoMemories();
+      } catch (e) {
+        console.error("failed to save neo memory", e);
+      }
+    }
+
     // heroModels (defined below) already scopes creators down to just their
     // own record — reused here so Neo's context matches what's on screen.
     try {
@@ -5144,6 +5205,14 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
           context: {
             viewerRole: session.role,
             viewerName: session.name,
+            memories: neoMemories.map((m) => m.content),
+            primaryObjective: {
+              monthlyRevenueSoFar: Math.round(monthRevenue),
+              monthlyRevenueGoal: Math.round(monthGoal),
+              percentToGoal: monthPct,
+              dayOfMonth,
+              daysInMonth,
+            },
             cardCount: cards.length,
             openTasks: tasks.filter((t) => t.status !== "done").length,
             overdueTasks: tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < todayISO()).length,
@@ -5348,7 +5417,8 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   const agencyModelNames = new Set(heroModels.map((m) => m.name));
   const inflowwThisMonth = (inflowwDailyStats || []).filter((r) => agencyModelNames.has(r.model) && r.statDate >= monthStart);
   const monthRevenue = inflowwThisMonth.reduce((sum, r) => sum + (r.earningsNet || 0), 0);
-  const monthGoal = (settings && settings.monthlyRevenueGoal) || 20000;
+  const ownGoal = session.role === "creator" ? heroModels[0]?.monthlyGoal : null;
+  const monthGoal = (ownGoal != null && ownGoal !== "") ? Number(ownGoal) : ((settings && settings.monthlyRevenueGoal) || 20000);
   const monthPct = Math.min(100, Math.round((monthRevenue / monthGoal) * 100));
   const dayOfMonth = now.getDate();
 
@@ -5390,7 +5460,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
   return (
     <div className="-m-6 p-6" style={{ background: "rgba(3,8,5,0.72)", minHeight: "calc(100vh - 160px)", fontFamily: "'JetBrains Mono', monospace" }}>
       {/* mini topbar */}
-      <div className="flex items-center justify-between pb-3 mb-5 neo-fade-in" style={{ borderBottom: `1px solid ${border}`, animationDelay: "0.05s" }}>
+      <div className="flex items-center justify-between pb-3 mb-5 neo-fade-in relative" style={{ borderBottom: `1px solid ${border}`, animationDelay: "0.05s", zIndex: 1 }}>
         <div className="font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88`, fontSize: "20px" }}>
           NEO <span style={{ color: textDim, fontWeight: 400 }}>// ZION OS INTELLIGENCE SYSTEM</span>
         </div>
@@ -5398,10 +5468,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
       </div>
 
       {/* status row — simple flow, no absolute positioning so it can never end up far from the orb */}
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-6 neo-fade-in" style={{ animationDelay: "0.15s" }}>
-        <div className="fs-10 tracking-widest" style={{ color: textDim, letterSpacing: "3px" }}>
-          STATUS <b style={{ color: neoGreen }}>{thinking ? "PROCESSING" : speaking ? "SPEAKING" : "ONLINE"}</b>
-        </div>
+      <div className="flex items-center justify-end flex-wrap gap-2 mb-6 neo-fade-in relative" style={{ animationDelay: "0.15s", zIndex: 1 }}>
         <div className="text-right">
           <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>OPEN TASKS / CARDS</div>
           <div className="text-xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>{openTasksCount} <span style={{ color: textDim, fontSize: "14px" }}>/</span> {cards.length}</div>
@@ -5412,53 +5479,37 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
           centered together. Mobile stacks (orb on top, text below); desktop
           sits side by side. Status/heard text has a fixed-height box so a
           long reply can never push anything else around. */}
-      <div className="sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4 sm:min-h-[70vh] overflow-x-hidden">
-        <div className="flex flex-col-reverse sm:contents items-center gap-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center items-center" style={{ gap: "3rem", minHeight: "70vh" }}>
 
           {/* left: identity + live status — desktop only now; mobile keeps
               its earlier simpler version below instead */}
-          <div className="hidden sm:flex sm:flex-col items-center sm:items-start text-center sm:text-left sm:justify-self-end">
-            <div className="flex items-center gap-2 mb-2 neo-fade-in" style={{ animationDelay: "0.15s" }}>
-              <span style={{
-                width: 8, height: 8, borderRadius: "50%",
-                background: thinking ? amber : speaking ? neoGreen : listening ? neoGreen : neoGreen,
-                boxShadow: `0 0 8px ${thinking ? amber : neoGreen}`,
-                animation: (thinking || speaking || listening) ? "neoDotBlink 0.8s ease-in-out infinite" : "neoDotBlink 1.6s ease-in-out infinite",
-              }} />
-              <span className="fs-10 tracking-widest" style={{ color: thinking ? amber : (speaking || listening) ? neoGreen : textDim, letterSpacing: "3px" }}>
-                {thinking ? "THINKING" : speaking ? "SPEAKING" : listening ? "LISTENING" : "SERVERS ACTIVE"}
-              </span>
-            </div>
-            <div className="neo-fade-in font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 16px ${neoGreen}aa`, fontSize: "30px", lineHeight: 1, animationDelay: "0.25s" }}>
-              NEO
-            </div>
-            {/* fixed-height status area — content changes but the box never does, so it can't shove other elements around */}
-            <div className="mt-4 neo-fade-in" style={{ minHeight: 64, maxWidth: 280, animationDelay: "0.4s" }}>
-              <div className="fs-13 italic" style={{ color: neoGreen, opacity: 0.9 }}>
-                {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
+          <div className="hidden sm:flex sm:flex-col items-center sm:items-start text-center sm:text-left" style={{ width: 280, flexShrink: 0 }}>
+            <div style={{ transform: `translate(12px, -12px)` }}>
+              <div className="flex items-baseline gap-2 neo-fade-in" style={{ animationDelay: "0.15s" }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                  background: thinking ? amber : neoGreen,
+                  boxShadow: `0 0 8px ${thinking ? amber : neoGreen}`,
+                  animation: (thinking || speaking || listening) ? "neoDotBlink 0.8s ease-in-out infinite" : "neoDotBlink 1.6s ease-in-out infinite",
+                }} />
+                <span className="font-bold tracking-widest" style={{ color: neoGreen, textShadow: `0 0 12px ${neoGreen}aa`, fontSize: "18px" }}>
+                  NEO
+                </span>
+                <span className="fs-11 tracking-widest" style={{ color: thinking ? amber : (speaking || listening) ? neoGreen : textDim, letterSpacing: "2px" }}>
+                  — {thinking ? "THINKING" : speaking ? "SPEAKING" : listening ? "LISTENING" : "ONLINE"}
+                </span>
               </div>
-              {heard && <div className="fs-10 italic mt-1 truncate" style={{ color: neoGreen, opacity: 0.4, maxWidth: 280 }}>heard: "{heard}"</div>}
-              {voiceError && <div className="fs-10 italic mt-1 truncate" style={{ color: "#e07a5f", maxWidth: 280 }}>voice error: {voiceError}</div>}
-            </div>
-
-            {/* radar sweep — a bit of pure sci-fi visual flair */}
-            <div className="mt-6 neo-fade-in" style={{ animationDelay: "0.65s", opacity: 0.85 }}>
-              <NeoRadar active={listening || thinking} />
-            </div>
-
-            {/* HUD-bracketed mini stats, stacked under the identity block — desktop only */}
-            <div className="mt-6 flex flex-col gap-4 neo-fade-in" style={{ animationDelay: "0.7s" }}>
-              {[[session.role === "creator" ? "MY PROFILE" : "ACTIVE MODELS", session.role === "creator" ? "\u2713" : heroModels.length], ["OPEN TASKS", openTasksCount], ["TRENDS SHARED", relevantTrends.length]].map(([label, val]) => (
-                <div key={label} className="relative pl-3 pr-4 py-1.5" style={{ borderLeft: `2px solid ${neoGreen}`, background: "rgba(57,230,115,0.04)" }}>
-                  <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "1.5px" }}>{label}</div>
-                  <div className="text-xl font-bold" style={{ color: neoGreen, textShadow: `0 0 8px ${neoGreen}88` }}>{val}</div>
+              {/* fixed-height status area — content changes but the box never does, so it can't shove other elements around */}
+              <div className="mt-3 neo-fade-in overflow-hidden" style={{ height: 40, maxWidth: 280, animationDelay: "0.4s" }}>
+                <div className="fs-13 italic" style={{ color: neoGreen, opacity: 0.9 }}>
+                  {thinking ? "thinking — click the orb to stop." : speaking ? "speaking — click the orb to stop." : listening ? "listening — click the orb to stop." : "click the orb to ask something."}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
 
           {/* mobile-only text block — exactly how it worked before, unchanged */}
-          <div className="sm:hidden flex flex-col items-center text-center">
+          <div className="sm:hidden flex flex-col items-center text-center order-2">
             <div className="fs-10 tracking-widest mt-4 neo-fade-in" style={{ color: textDim, letterSpacing: "3px", animationDelay: "0.5s" }}>
               N.E.O. — <b style={{ color: amber }}>NEURAL ENGAGEMENT ORCHESTRATOR</b>
             </div>
@@ -5473,55 +5524,58 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
               own scale/pulse via direct refs (not React state), so it
               breathes as one thing with the mesh instead of just sitting
               there statically. */}
-          <div className="relative neo-orb-fade-in neo-orb-size w-full max-w-[300px] sm:justify-self-center" style={{ aspectRatio: "1 / 1", animationDelay: "0.3s" }}>
-            <div ref={glowElRef} style={{ position: "absolute", inset: "8%", background: "radial-gradient(circle, rgba(57,230,115,0.45) 0%, rgba(57,230,115,0.18) 45%, transparent 75%)", filter: "blur(14px)", pointerEvents: "none", willChange: "transform, opacity" }} />
-            {thinking && (
+      <div className="flex flex-col items-center">
+          <div className="relative neo-orb-fade-in order-1 sm:order-none mt-6 sm:mt-8" style={{
+            animationDelay: "0.3s",
+            width: (isDesktopViewport ? Math.min(winWidth * 0.32, 650) : 300) * 0.98,
+            height: (isDesktopViewport ? Math.min(winWidth * 0.32, 650) : 300) * 0.98,
+            flexShrink: 0,
+            transform: `translate(4px, 0px)`,
+            zIndex: 100,
+          }}>
+            <div style={{ position: "absolute", inset: 0, transform: `translate(-8px, -36px) scale(1.14)` }}>
+              <div ref={glowElRef} style={{ position: "absolute", inset: "8%", background: "radial-gradient(circle, rgba(57,230,115,0.65) 0%, rgba(57,230,115,0.3) 45%, transparent 75%)", filter: "blur(36px)", pointerEvents: "none", willChange: "transform, opacity" }} />
+            </div>
+            {/* tick-mark dial ring behind the orb — a bit of HUD/instrument-panel flair. Independently adjustable via the edit panel. */}
+            <div style={{ position: "absolute", inset: 0, transform: `translate(20px, -12px) scale(1.14)` }}>
+              <svg className="neo-ring-size" viewBox="0 0 400 400" style={{ position: "absolute", inset: "-6%", pointerEvents: "none" }}>
+                <circle cx="200" cy="200" r="196" fill="none" stroke="rgba(57,230,115,0.18)" strokeWidth="1" />
+                <circle cx="200" cy="200" r="182" fill="none" stroke="rgba(57,230,115,0.14)" strokeWidth="1" strokeDasharray="1,7" />
+                {Array.from({ length: 48 }, (_, i) => {
+                  const a = (Math.PI * 2 * i) / 48;
+                  const isMajor = i % 4 === 0;
+                  const r1 = isMajor ? 160 : 168;
+                  const r2 = 178;
+                  return (
+                    <line key={i}
+                      x1={200 + Math.cos(a) * r1} y1={200 + Math.sin(a) * r1}
+                      x2={200 + Math.cos(a) * r2} y2={200 + Math.sin(a) * r2}
+                      stroke={isMajor ? "rgba(120,255,160,0.5)" : "rgba(57,230,115,0.25)"}
+                      strokeWidth={isMajor ? 2 : 1} />
+                  );
+                })}
+                <circle cx="200" cy="200" r="148" fill="none" stroke="rgba(57,230,115,0.22)" strokeWidth="1" />
+              </svg>
+            </div>
+            {showThinkingLabel && (
               <div className="absolute left-1/2 -translate-x-1/2 font-mono uppercase tracking-widest flex items-baseline"
-                style={{ top: -6, color: amber, fontSize: "13px", letterSpacing: "4px", textShadow: `0 0 10px ${amber}aa`, animation: "neoThinkPulse 1.1s ease-in-out infinite" }}>
+                style={{ top: "-130px", color: amber, fontSize: "14px", letterSpacing: "5px", fontFamily: "'Orbitron', 'JetBrains Mono', monospace", fontWeight: 700, textShadow: `0 0 10px ${amber}aa`, animation: "neoThinkPulse 1.1s ease-in-out infinite", zIndex: 21 }}>
                 THINKING
                 <span style={{ display: "inline-block", width: "3px", height: "3px", borderRadius: "50%", background: amber, marginLeft: "6px", animation: "neoDotBlink 1.2s ease-in-out infinite" }} />
                 <span style={{ display: "inline-block", width: "3px", height: "3px", borderRadius: "50%", background: amber, marginLeft: "3px", animation: "neoDotBlink 1.2s ease-in-out infinite 0.2s" }} />
                 <span style={{ display: "inline-block", width: "3px", height: "3px", borderRadius: "50%", background: amber, marginLeft: "3px", animation: "neoDotBlink 1.2s ease-in-out infinite 0.4s" }} />
               </div>
             )}
-            <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} glowElRef={glowElRef} />
-          </div>
-
-          {/* audio waveform — sits centered under the orb, only really comes
-              alive while Neo is actually speaking */}
-          <div className="hidden sm:flex sm:justify-self-center sm:col-start-2 mt-3 neo-fade-in" style={{ animationDelay: "0.8s", opacity: speaking ? 1 : 0.3 }}>
-            <NeoWaveform amplitude={speaking ? 4 : listening ? 3 : 1} liveAmpRef={liveAmpRef} speaking={speaking} />
-          </div>
-
-          {/* right: HUD-bracketed mini stats + a real sparkline chart — desktop only */}
-          <div className="hidden sm:flex sm:flex-col sm:gap-4 sm:justify-self-start neo-fade-in" style={{ animationDelay: "0.7s" }}>
-            <div className="relative pr-3 pl-4 py-2" style={{ borderRight: `2px solid ${amber}`, background: "rgba(57,230,115,0.04)", textAlign: "right" }}>
-              <div className="fs-9 tracking-widest mb-1" style={{ color: textDim, letterSpacing: "1.5px" }}>REVENUE — LAST 7D</div>
-              <div className="text-xl font-bold mb-1" style={{ color: amber, textShadow: `0 0 8px ${amber}88` }}>${Math.round(monthRevenue).toLocaleString()}</div>
-              <Sparkline data={last7Series} color={amber} height={30} />
-            </div>
-            {[["ACTIVE SUBS", activeSubs.toLocaleString(), neoGreen], ["NEW SUBS (7D)", Math.max(0, newSubs7d), neoGreen], ["TOP REEL VIEWS", topReel ? fmtK(topReel.views) : "—", neoGreen]].map(([label, val, color]) => (
-              <div key={label} className="relative pr-3 pl-4 py-1.5" style={{ borderRight: `2px solid ${color}`, background: "rgba(57,230,115,0.04)", textAlign: "right" }}>
-                <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "1.5px" }}>{label}</div>
-                <div className="text-xl font-bold" style={{ color, textShadow: `0 0 8px ${color}88` }}>{val}</div>
-              </div>
-            ))}
-            {/* circular goal ring */}
-            <div className="flex items-center gap-3 justify-end mt-2">
-              <div style={{ textAlign: "right" }}>
-                <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "1.5px" }}>MONTHLY GOAL</div>
-                <div className="text-lg font-bold" style={{ color: neoGreen }}>{monthPct}%</div>
-              </div>
-              <svg width="48" height="48" viewBox="0 0 48 48">
-                <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(57,230,115,0.15)" strokeWidth="4" />
-                <circle cx="24" cy="24" r="20" fill="none" stroke={neoGreen} strokeWidth="4" strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - monthPct / 100)}
-                  transform="rotate(-90 24 24)" style={{ filter: `drop-shadow(0 0 4px ${neoGreen})` }} />
-              </svg>
+            <div style={{ position: "absolute", inset: 0, transform: `translate(-8px, -44px) scale(1.18)`, zIndex: 22 }}>
+              <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} glowElRef={glowElRef} />
             </div>
           </div>
+      </div>
 
-        </div>
+      {/* empty spacer, same width as the left panel — keeps the orb visually
+          centered now that the right panel has no content of its own */}
+      <div className="hidden sm:block" style={{ width: 280, flexShrink: 0 }} />
+
       </div>
 
       {/* all the quick stats — mobile only now; desktop shows this same data
@@ -5566,39 +5620,39 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
           numbers should never see the rest of the roster. */}
       {session.role === "admin" && (
       <>
+      {/* financial strip — shown on all screen sizes now, it reads nicer as a full-width strip than the small circular ring */}
+      <div className="flex items-center gap-7 flex-wrap mt-8 pt-5 pb-5 neo-fade-in" style={{ borderTop: `1px solid ${border}`, animationDelay: "0.85s", transform: `translate(0px, -20px) scale(1.02)` }}>
+        <div>
+          <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>PRIMARY OBJECTIVE — MONTHLY REVENUE</div>
+          <div className="text-3xl font-bold" style={{ color: amber, textShadow: "0 0 12px rgba(255,210,74,0.45)" }}><CountUp value={monthRevenue} prefix="$" /></div>
+        </div>
+        <div className="flex gap-5">
+          <div className="fs-13" style={{ color: neoGreen }}>
+            ${Math.round(monthGoal).toLocaleString()}
+            <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>GOAL</span>
+          </div>
+          <div className="fs-13" style={{ color: neoGreen }}>
+            ${Math.max(0, Math.round(monthGoal - monthRevenue)).toLocaleString()}
+            <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>REMAINING</span>
+          </div>
+        </div>
+        <div className="flex-1 minw-180">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#0a5c2c" }}>
+            <div className="h-full transition-all" style={{ width: `${monthPct}%`, background: `linear-gradient(90deg, #12b34c, ${neoGreen})`, boxShadow: `0 0 8px ${neoGreen}88` }} />
+          </div>
+          <div className="flex justify-between fs-9 mt-1" style={{ color: textDim, letterSpacing: "1px" }}>
+            <span>DAY {dayOfMonth}/{daysInMonth}</span><span>{monthPct}%</span>
+          </div>
+        </div>
+      </div>
+
       <div className="sm:hidden">
-        <div className="flex items-center gap-3 mt-8 mb-4 neo-fade-in" style={{ animationDelay: "0.8s" }}>
+        <div className="flex items-center gap-3 mt-2 mb-4 neo-fade-in" style={{ animationDelay: "0.8s" }}>
           <div className="fs-11 tracking-widest px-2.5 py-1 rounded" style={{ color: textDim, letterSpacing: "3px", border: `1px solid ${border}` }}>
             AGENCY STATS
             <span className="fs-9 ml-2 px-1.5 py-0.5 rounded" style={{ color: amber, border: "1px solid rgba(255,210,74,0.35)", letterSpacing: "2px" }}>TEAM ONLY</span>
           </div>
           <div className="flex-1 h-px" style={{ background: border }} />
-        </div>
-
-        {/* financial strip */}
-        <div className="flex items-center gap-7 flex-wrap pt-1 pb-5 neo-fade-in" style={{ animationDelay: "0.85s" }}>
-          <div>
-            <div className="fs-9 tracking-widest" style={{ color: textDim, letterSpacing: "2px" }}>PRIMARY OBJECTIVE — MONTHLY REVENUE</div>
-            <div className="text-3xl font-bold" style={{ color: amber, textShadow: "0 0 12px rgba(255,210,74,0.45)" }}><CountUp value={monthRevenue} prefix="$" /></div>
-          </div>
-          <div className="flex gap-5">
-            <div className="fs-13" style={{ color: neoGreen }}>
-              ${Math.round(monthGoal).toLocaleString()}
-              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>GOAL</span>
-            </div>
-            <div className="fs-13" style={{ color: neoGreen }}>
-              ${Math.max(0, Math.round(monthGoal - monthRevenue)).toLocaleString()}
-              <span className="block fs-9 mt-0.5" style={{ color: textDim, letterSpacing: "1.5px" }}>REMAINING</span>
-            </div>
-          </div>
-          <div className="flex-1 minw-180">
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#0a5c2c" }}>
-              <div className="h-full transition-all" style={{ width: `${monthPct}%`, background: `linear-gradient(90deg, #12b34c, ${neoGreen})`, boxShadow: `0 0 8px ${neoGreen}88` }} />
-            </div>
-            <div className="flex justify-between fs-9 mt-1" style={{ color: textDim, letterSpacing: "1px" }}>
-              <span>DAY {dayOfMonth}/{daysInMonth}</span><span>{monthPct}%</span>
-            </div>
-          </div>
         </div>
 
         <div className="grid gap-3.5 neo-fade-in" style={{ gridTemplateColumns: "repeat(3, 1fr)", animationDelay: "1.0s" }}>
@@ -7786,11 +7840,11 @@ function App() {
             style={{ borderColor: "rgba(57,230,115,0.35)", color: "#39e673", background: "rgba(3,7,5,0.6)", backdropFilter: "blur(6px)" }}>
             <X size={14} /> Leave Neo
           </button>
-          <div className="relative z-10 h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 py-4 md:py-6" style={{ maxWidth: "100vw" }}>
+          <div className="relative z-10 h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 py-4 md:py-6 sm:pt-10" style={{ maxWidth: "100vw" }}>
             {!neoBooting && (
               <NeoPage agency={session.agency} session={session} onNavigate={setView}
                 onSignOut={() => { clearSavedSession(); setSession(null); setView(null); setOnboardingDismissed(false); }}
-                cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} inflowwDailyStats={inflowwDailyStats} settings={settings} />
+                cards={scopedCards} tasks={scopedTasks} models={agencyModels} stats={scopedStats} reels={scopedReels} trends={trends} bufferDailyStats={bufferDailyStats} inflowwDailyStats={inflowwDailyStats} settings={settings} persistSettings={persistSettings} />
             )}
           </div>
         </div>
