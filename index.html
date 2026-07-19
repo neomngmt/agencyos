@@ -4499,10 +4499,9 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
     const animate = () => {
       const { thinking: th, speaking: sp, listening: li } = stateRef.current;
       const active = th || sp || li;
-      const elapsed = clock.getElapsedTime();
       const delta = Math.min(clock.getDelta(), 0.1); // clamp to avoid huge jumps after tab was backgrounded
 
-      const pulseSpeed = li ? 5.5 : 2.2;
+      const pulseSpeed = li ? 2.5 : 2.2;
       pulsePhase += pulseSpeed * delta;
 
       // One smooth, fully predictable pulse (a plain sine wave) drives
@@ -4516,7 +4515,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // discrete hops than a smooth breathing motion would.
       const pulseRaw = active ? Math.pow(Math.abs(Math.sin(pulsePhase)), 3) : 0;
       const pulse = pulseRaw;
-      const listenSwell = li ? pulse * 0.3 : 0;
+      const listenSwell = li ? pulse * 0.14 : 0;
 
       const noiseSpeed = th ? 0.3 : sp ? 0.24 : li ? 0.16 : 0.08;
       noisePhase += noiseSpeed * delta;
@@ -4559,7 +4558,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // Gentle, smoothed scale — slow lerp so it eases toward its target
       // rather than snapping, on every transition.
       const targetScale = (active ? 1.04 + pulse * 0.015 : 1) + burstOvershoot + voiceSwell + listenSwell;
-      scaleVec.x += (targetScale - scaleVec.x) * 0.3;
+      scaleVec.x += (targetScale - scaleVec.x) * 0.15;
       scaleVec.y = scaleVec.z = scaleVec.x;
       mesh.scale.copy(scaleVec);
 
