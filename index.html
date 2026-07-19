@@ -4502,7 +4502,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       const elapsed = clock.getElapsedTime();
       const delta = Math.min(clock.getDelta(), 0.1); // clamp to avoid huge jumps after tab was backgrounded
 
-      const pulseSpeed = li ? 3.4 : 2.2;
+      const pulseSpeed = li ? 5.5 : 2.2;
       pulsePhase += pulseSpeed * delta;
 
       // One smooth, fully predictable pulse (a plain sine wave) drives
@@ -4511,8 +4511,12 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // orb look like it was glitching. Listening gets a much bigger pulse
       // than thinking/speaking so it clearly reads as "waiting for you to
       // talk."
-      const pulse = active ? 0.5 + 0.5 * Math.sin(pulsePhase) : 0;
-      const listenSwell = li ? pulse * 0.4 : 0;
+      // A sharp "heartbeat" shape (not a smooth sine) — snaps up quickly,
+      // holds briefly, drops back down — reads much more clearly as
+      // discrete hops than a smooth breathing motion would.
+      const pulseRaw = active ? Math.pow(Math.abs(Math.sin(pulsePhase)), 3) : 0;
+      const pulse = pulseRaw;
+      const listenSwell = li ? pulse * 0.3 : 0;
 
       const noiseSpeed = th ? 0.3 : sp ? 0.24 : li ? 0.16 : 0.08;
       noisePhase += noiseSpeed * delta;
@@ -4555,7 +4559,7 @@ function NeoOrb3D({ thinking, speaking, listening, speakBumpRef, liveAmpRef, onC
       // Gentle, smoothed scale — slow lerp so it eases toward its target
       // rather than snapping, on every transition.
       const targetScale = (active ? 1.04 + pulse * 0.015 : 1) + burstOvershoot + voiceSwell + listenSwell;
-      scaleVec.x += (targetScale - scaleVec.x) * 0.2;
+      scaleVec.x += (targetScale - scaleVec.x) * 0.3;
       scaleVec.y = scaleVec.z = scaleVec.x;
       mesh.scale.copy(scaleVec);
 
@@ -5484,7 +5488,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
           {/* left: identity + live status — desktop only now; mobile keeps
               its earlier simpler version below instead */}
           <div className="hidden sm:flex sm:flex-col items-center sm:items-start text-center sm:text-left" style={{ width: 280, flexShrink: 0 }}>
-            <div style={{ transform: `translate(12px, -12px)` }}>
+            <div style={{ transform: isDesktopViewport ? `translate(12px, -12px)` : "none" }}>
               <div className="flex items-baseline gap-2 neo-fade-in" style={{ animationDelay: "0.15s" }}>
                 <span style={{
                   width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
@@ -5530,14 +5534,14 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
             width: (isDesktopViewport ? Math.min(winWidth * 0.32, 650) : 300) * 0.98,
             height: (isDesktopViewport ? Math.min(winWidth * 0.32, 650) : 300) * 0.98,
             flexShrink: 0,
-            transform: `translate(4px, 0px)`,
+            transform: isDesktopViewport ? `translate(4px, 0px)` : "none",
             zIndex: 100,
           }}>
-            <div style={{ position: "absolute", inset: 0, transform: `translate(-8px, -36px) scale(1.14)` }}>
+            <div style={{ position: "absolute", inset: 0, transform: isDesktopViewport ? `translate(-8px, -36px) scale(1.14)` : "none" }}>
               <div ref={glowElRef} style={{ position: "absolute", inset: "8%", background: "radial-gradient(circle, rgba(57,230,115,0.65) 0%, rgba(57,230,115,0.3) 45%, transparent 75%)", filter: "blur(36px)", pointerEvents: "none", willChange: "transform, opacity" }} />
             </div>
             {/* tick-mark dial ring behind the orb — a bit of HUD/instrument-panel flair. Independently adjustable via the edit panel. */}
-            <div style={{ position: "absolute", inset: 0, transform: `translate(20px, -12px) scale(1.14)` }}>
+            <div style={{ position: "absolute", inset: 0, transform: isDesktopViewport ? `translate(20px, -12px) scale(1.14)` : "none" }}>
               <svg className="neo-ring-size" viewBox="0 0 400 400" style={{ position: "absolute", inset: "-6%", pointerEvents: "none" }}>
                 <circle cx="200" cy="200" r="196" fill="none" stroke="rgba(57,230,115,0.18)" strokeWidth="1" />
                 <circle cx="200" cy="200" r="182" fill="none" stroke="rgba(57,230,115,0.14)" strokeWidth="1" strokeDasharray="1,7" />
@@ -5566,7 +5570,7 @@ function NeoPage({ agency, session, onNavigate, onSignOut, cards, tasks, models,
                 <span style={{ display: "inline-block", width: "3px", height: "3px", borderRadius: "50%", background: amber, marginLeft: "3px", animation: "neoDotBlink 1.2s ease-in-out infinite 0.4s" }} />
               </div>
             )}
-            <div style={{ position: "absolute", inset: 0, transform: `translate(-8px, -44px) scale(1.18)`, zIndex: 22 }}>
+            <div style={{ position: "absolute", inset: 0, transform: isDesktopViewport ? `translate(-8px, -44px) scale(1.18)` : "none", zIndex: 22 }}>
               <NeoOrb3D thinking={thinking} speaking={speaking} listening={listening} speakBumpRef={speakBumpRef} liveAmpRef={liveAmpRef} onClick={orbClick} glowElRef={glowElRef} />
             </div>
           </div>
