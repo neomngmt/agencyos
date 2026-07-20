@@ -7109,7 +7109,7 @@ function TitleGeneratorPage() {
   const [copiedMsg, setCopiedMsg] = useState("");
 
   const runGenerate = async () => {
-    const urls = linksText.split("\n").map((l) => l.trim()).filter(Boolean).map(cleanIgUrl);
+    const urls = linksText.split("\n").map((l) => l.trim()).filter((l) => l && /^https?:\/\//i.test(l)).map(cleanIgUrl);
     if (!urls.length) return;
     setRunning(true);
     setResults(urls.map((url) => ({ url, script: "", status: "pending" })));
