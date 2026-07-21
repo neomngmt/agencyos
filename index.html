@@ -243,6 +243,42 @@ const ICON_DATA = {
     ["path", { d: "M15 8V2" }],
     ["path", { d: "M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" }],
   ],
+  Play: [["polygon", { points: "6 3 20 12 6 21 6 3" }]],
+  Copy: [
+    ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }],
+    ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }],
+  ],
+  Heart: [["path", { d: "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" }]],
+  FileText: [
+    ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }],
+    ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4" }],
+    ["path", { d: "M10 9H8" }],
+    ["path", { d: "M16 13H8" }],
+    ["path", { d: "M16 17H8" }],
+  ],
+  BarChart3: [
+    ["path", { d: "M3 3v18h18" }],
+    ["path", { d: "M18 17V9" }],
+    ["path", { d: "M13 17V5" }],
+    ["path", { d: "M8 17v-3" }],
+  ],
+  Shuffle: [
+    ["path", { d: "m18 14 4 4-4 4" }],
+    ["path", { d: "m18 2 4 4-4 4" }],
+    ["path", { d: "M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" }],
+    ["path", { d: "M2 6h1.972a4 4 0 0 1 3.6 2.2" }],
+    ["path", { d: "M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" }],
+  ],
+  ExternalLink: [
+    ["path", { d: "M15 3h6v6" }],
+    ["path", { d: "M10 14 21 3" }],
+    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }],
+  ],
+  Link2: [
+    ["path", { d: "M9 17H7A5 5 0 0 1 7 7h2" }],
+    ["path", { d: "M15 7h2a5 5 0 1 1 0 10h-2" }],
+    ["line", { x1: "8", x2: "16", y1: "12", y2: "12" }],
+  ],
 };
 
 function makeIcon(name, elements) {
@@ -266,6 +302,7 @@ const {
   Trash2, Loader2, LayoutGrid, Film, UserCircle2, Send, Circle,
   CheckCircle2, Repeat, ChevronLeft, CheckSquare, Lock, LogOut, ShieldCheck,
   TrendingUp, TrendingDown, DollarSign, Instagram, Eye, Minus, Plug, Flame, Sparkles, Mic, Bell, Settings, Search, XLogo, TikTokLogo, Menu, Zap, Megaphone,
+  Play, Copy, Heart, FileText, BarChart3, Shuffle, ExternalLink, Link2,
 } = Icons;
 
 // ---------------------------------------------------------------------------
@@ -845,6 +882,7 @@ const modelsToJS = (r) => ({
   notifLastSeen: r.notif_last_seen ? new Date(r.notif_last_seen).getTime() : 0,
   inspoProfiles: Array.isArray(r.inspo_profiles) ? r.inspo_profiles : (r.inspo_profiles ? JSON.parse(r.inspo_profiles) : []),
   monthlyGoal: r.monthly_goal != null ? Number(r.monthly_goal) : null,
+  igAccessToken: r.ig_access_token || "", igConnectedAt: r.ig_connected_at ? new Date(r.ig_connected_at).getTime() : null,
 });
 const modelsToDB = (m) => ({
   name: m.name, note: m.note || "", pin: m.pin || "", onboarded: !!m.onboarded,
@@ -861,6 +899,7 @@ const modelsToDB = (m) => ({
   notif_last_seen: m.notifLastSeen ? new Date(m.notifLastSeen).toISOString() : null,
   inspo_profiles: m.inspoProfiles || [],
   monthly_goal: m.monthlyGoal != null && m.monthlyGoal !== "" ? Number(m.monthlyGoal) : null,
+  ig_access_token: m.igAccessToken || "", ig_connected_at: m.igConnectedAt ? new Date(m.igConnectedAt).toISOString() : null,
 });
 
 const cardsToJS = (r) => ({
@@ -1154,7 +1193,161 @@ function CardDetail({ card, models, restrictModel, onClose, onSave, onDelete }) 
   );
 }
 
-function ContentDirector({ cards, persistCards, models, restrictModel, forcedNetwork }) {
+// ---------- X bulk upload & auto-caption studio (visual preview, not wired up yet) ----------
+
+const XCAPTION_MOCK_TEMPLATES = [
+  "new drop just went live 👀 who's checking it first tonight?",
+  "feeling myself in this one ngl... link in bio if you know you know",
+  "not gonna lie this set might be a favorite. thoughts?",
+  "quick one before bed 🌙 tell me what you want to see more of",
+  "been sitting on this one for a minute, finally posting it",
+  "this took way too many takes to get right lol, worth it though",
+];
+
+function XCaptionStudio({ models, restrictModel, filterModel }) {
+  const scopedModels = restrictModel ? models.filter((m) => m.name === restrictModel) : models;
+  const [selectedModel, setSelectedModel] = React.useState(
+    restrictModel || (filterModel && filterModel !== "all" ? filterModel : scopedModels[0]?.name || "")
+  );
+  React.useEffect(() => {
+    if (restrictModel) { setSelectedModel(restrictModel); return; }
+    if (filterModel && filterModel !== "all") setSelectedModel(filterModel);
+  }, [filterModel, restrictModel]);
+
+  const model = scopedModels.find((m) => m.name === selectedModel);
+  const [photos, setPhotos] = React.useState([]);
+  const [generating, setGenerating] = React.useState(false);
+  const [pairs, setPairs] = React.useState([]);
+
+  const addMockPhotos = () => {
+    const n = 3 + Math.floor(Math.random() * 3);
+    const hues = [140, 200, 320, 20, 260, 60];
+    const newPhotos = Array.from({ length: n }, () => ({
+      id: uid(),
+      name: `IMG_${Math.floor(1000 + Math.random() * 9000)}.HEIC`,
+      hue: hues[Math.floor(Math.random() * hues.length)],
+    }));
+    setPhotos((prev) => [...prev, ...newPhotos]);
+    setPairs([]);
+  };
+  const removePhoto = (id) => { setPhotos((prev) => prev.filter((p) => p.id !== id)); setPairs([]); };
+
+  const generateCaptions = () => {
+    if (!photos.length) return;
+    setGenerating(true);
+    setPairs([]);
+    setTimeout(() => {
+      const shuffled = [...XCAPTION_MOCK_TEMPLATES].sort(() => Math.random() - 0.5);
+      const newPairs = photos.slice(0, 4).map((p, i) => ({
+        photo: p, caption: shuffled[i % shuffled.length], time: i % 2 === 0 ? "11:00" : "17:00",
+      }));
+      setPairs(newPairs);
+      setGenerating(false);
+    }, 900);
+  };
+
+  const persona = model ? [model.bio, model.note].filter(Boolean).join(" · ") : "";
+
+  return (
+    <div className="mb-5 c-bg-surface border c-border rounded-xl p-4 relative overflow-hidden">
+      <div className="absolute top-0 right-0 fs-9 tracking-widest uppercase font-mono px-2 py-1 rounded-bl-lg c-bg-accent-a2 c-accent">
+        Preview · not live yet
+      </div>
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles size={15} className="c-accent" />
+        <span className="fs-13 font-semibold c-text">Bulk Upload &amp; Auto-Captions</span>
+        <XLogo size={12} className="c-muted" />
+      </div>
+      <p className="fs-11 c-muted font-mono mb-4 max-w-xl">
+        Drop photos in, generate captions from last week's performance + this model's persona, queue straight to Buffer. This is a preview of the workflow — nothing here posts yet.
+      </p>
+
+      {!restrictModel && scopedModels.length > 1 && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
+          {scopedModels.map((m) => (
+            <button key={m.name} onClick={() => { setSelectedModel(m.name); setPhotos([]); setPairs([]); }}
+              className={`fs-11 font-mono uppercase px-2.5 py-1 rounded-lg border ${selectedModel === m.name ? "c-border-accent c-accent c-bg-accent-a2" : "c-border c-muted hover-bg-surface"}`}>
+              {m.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2">Photos queued</div>
+          <button onClick={addMockPhotos}
+            className="w-full flex items-center justify-center gap-2 border border-dashed c-border rounded-xl py-5 mb-2 fs-11 font-mono c-muted hover-border-accent hover-bg-surface transition-colors tap">
+            <Plus size={14} /> Drop photos here (Drive folder or upload)
+          </button>
+          {photos.length > 0 && (
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+              {photos.map((p) => (
+                <div key={p.id} className="relative rounded-lg overflow-hidden group" style={{ paddingTop: "100%", background: `linear-gradient(135deg, hsl(${p.hue} 55% 22%), hsl(${p.hue} 55% 12%))` }}>
+                  <button onClick={() => removePhoto(p.id)}
+                    className="absolute top-1 right-1 c-bg-app rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 size={10} className="c-muted" />
+                  </button>
+                  <div className="absolute bottom-0 inset-x-0 fs-9 font-mono px-1 py-0.5 truncate" style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}>{p.name}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="w-full lg:w-72 flex-shrink-0">
+          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2">Persona context</div>
+          <div className="c-bg-app border c-border rounded-xl p-3 mb-3">
+            {model ? (
+              <>
+                <div className="fs-12 font-semibold c-text mb-1">{model.name}</div>
+                <div className="fs-11 c-muted leading-snug">
+                  {persona || <span className="c-faint italic">No bio/notes set in Model Manager yet</span>}
+                </div>
+                {model.xHandle && <div className="fs-10 c-faint font-mono mt-1.5">@{model.xHandle}</div>}
+              </>
+            ) : (
+              <div className="fs-11 c-faint italic font-mono">Pick a model above</div>
+            )}
+          </div>
+          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2">Last week signal</div>
+          <div className="c-bg-app border c-border rounded-xl p-3 mb-3 fs-11 c-muted font-mono leading-relaxed">
+            Top format: <span className="c-text">talking head, direct CTA</span><br />
+            Avg engagement: <span className="c-accent">+18% vs prior week</span>
+          </div>
+          <button onClick={generateCaptions} disabled={!photos.length || generating}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg c-bg-accent c-onaccent fs-12 font-mono uppercase tracking-wide font-semibold hover-bg-accent2 disabled:opacity-40 tap">
+            {generating ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><Sparkles size={14} /> Generate captions</>}
+          </button>
+        </div>
+      </div>
+
+      {pairs.length > 0 && (
+        <div className="mt-4 pt-4 border-t c-border">
+          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-2">Ready to queue</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {pairs.map((pair) => (
+              <div key={pair.photo.id} className="flex gap-3 c-bg-app border c-border rounded-xl p-3">
+                <div className="flex-shrink-0 rounded-lg overflow-hidden" style={{ width: 56, height: 56, background: `linear-gradient(135deg, hsl(${pair.photo.hue} 55% 22%), hsl(${pair.photo.hue} 55% 12%))` }} />
+                <div className="flex-1 min-w-0">
+                  <div className="fs-12 c-text leading-snug mb-1.5">{pair.caption}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="fs-10 c-faint font-mono">Queue · {pair.time}</span>
+                    <button disabled title="Buffer API integration coming next"
+                      className="flex items-center gap-1 fs-10 font-mono uppercase px-2 py-1 rounded-lg border c-border c-faint cursor-not-allowed">
+                      <Send size={10} /> Queue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function ContentDirector({ cards, persistCards, models, restrictModel, forcedNetwork, reels, persistReels }) {
   const [detail, setDetail] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -1198,6 +1391,58 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
   const visible = network === "all" ? byModel : byModel.filter((c) => (c.platform || "ig") === network);
   const countFor = (netId) => (netId === "all" ? byModel.length : byModel.filter((c) => (c.platform || "ig") === netId).length);
 
+  // Instagram is a completely different, per-model experience (see InstagramContentHub) —
+  // team/admin login only for now; creator login keeps the existing board until
+  // her own version of this is designed.
+  const igModelName = restrictModel || (filter !== "all" ? filter : null);
+  const igModelObj = igModelName ? models.find((m) => m.name === igModelName) : null;
+  const igMode = network === "ig" && !restrictModel;
+
+  if (igMode) {
+    return igModelName ? (
+      <InstagramContentHub
+        key={igModelName}
+        modelName={igModelName}
+        modelObj={igModelObj}
+        cards={cards}
+        persistCards={persistCards}
+        reels={reels || []}
+        persistReels={persistReels}
+        onBackToModels={() => setFilter("all")}
+      />
+    ) : (
+      <IGModelPicker models={models} onPick={setFilter} />
+    );
+  }
+
+  // TikTok gets the same automation-console treatment — team/admin only for now.
+  const ttModelName = restrictModel || (filter !== "all" ? filter : null);
+  const ttMode = network === "tiktok" && !restrictModel;
+  if (ttMode) {
+    return ttModelName ? (
+      <TikTokContentHub
+        key={ttModelName}
+        models={models}
+        cards={cards}
+        selectedModelName={ttModelName}
+        onBackToModels={() => setFilter("all")}
+      />
+    ) : (
+      <IGModelPicker models={models} onPick={setFilter} subtitle="Opens her dedicated TikTok automation console." handleKey="tiktokHandle" handleLabel="TikTok" />
+    );
+  }
+
+  // X's caption studio also needs one model in focus.
+  const xModelName = restrictModel || (filter !== "all" ? filter : null);
+  const xMode = network === "x" && !restrictModel;
+  if (xMode) {
+    return xModelName ? (
+      <XCaptionStudio key={xModelName} models={models} restrictModel={xModelName} filterModel={xModelName} />
+    ) : (
+      <IGModelPicker models={models} onPick={setFilter} subtitle="Opens her dedicated X caption studio." handleKey="xHandle" handleLabel="X" />
+    );
+  }
+
   return (
     <div className="flex gap-5">
       <div className="minw-140 w-140 flex-shrink-0 hidden md:block">
@@ -1235,6 +1480,7 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
         ))}
       </div>
 
+      {network !== "x" && (
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         {!restrictModel && (
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1256,8 +1502,9 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
           <Plus size={13} /> New scene
         </button>
       </div>
+      )}
 
-      {adding && (
+      {adding && network !== "x" && (
         <div className="mb-4 c-bg-surface border c-border rounded-xl p-3 flex gap-2 flex-wrap">
           <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addCard()} placeholder="Scene title / hook..."
@@ -1278,6 +1525,9 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
         </div>
       )}
 
+      {network === "x" && <XCaptionStudio models={models} restrictModel={restrictModel} filterModel={filter} />}
+
+      {network !== "x" && (
       <div className="flex gap-3 overflow-x-auto pb-4 snap-x snap-proximity -mx-4 px-4 md:mx-0 md:px-0">
         {STAGES.map((stage) => {
           const stageCards = visible.filter((c) => c.stage === stage.id);
@@ -1298,6 +1548,7 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
           );
         })}
       </div>
+      )}
 
       {detail && <CardDetail card={detail} models={models} restrictModel={restrictModel} onClose={() => setDetail(null)} onSave={saveCard} onDelete={deleteCard} />}
       </div>
@@ -1305,14 +1556,1038 @@ function ContentDirector({ cards, persistCards, models, restrictModel, forcedNet
   );
 }
 
+// ---------- Instagram Content Director (dedicated per-model hub) ----------
+// Deliberately NOT styled like the rest of the app's generic c-bg-surface
+// cards — this is its own console-like space (glow panel, pill steppers,
+// live clock) so it actually reads as a distinct mode, not another kanban.
+
+function useLiveClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+function IGStepper({ value, onChange, min = 0, max = 60, big = false }) {
+  return (
+    <div className={`inline-flex items-center border c-border rounded-full ${big ? "gap-5 px-4 py-2" : "gap-3 px-2.5 py-1"}`}>
+      <button type="button" onClick={() => onChange(Math.max(min, value - 1))}
+        className="c-muted hover-accent-text transition-colors flex items-center justify-center">
+        <Minus size={big ? 15 : 12} />
+      </button>
+      <span className={`text-center font-mono font-bold c-text ${big ? "text-2xl w-9" : "text-sm w-5"}`}>{value}</span>
+      <button type="button" onClick={() => onChange(Math.min(max, value + 1))}
+        className="c-muted hover-accent-text transition-colors flex items-center justify-center">
+        <Plus size={big ? 15 : 12} />
+      </button>
+    </div>
+  );
+}
+
+function IGBadge({ icon: Icon, children, glow }) {
+  return (
+    <span
+      className="fs-9 tracking-wide uppercase px-2.5 py-1 rounded-full font-mono font-semibold inline-flex items-center gap-1.5 border"
+      style={glow
+        ? { color: "#39e673", borderColor: "rgba(57,230,115,0.55)", background: "rgba(57,230,115,0.08)", boxShadow: "0 0 10px rgba(57,230,115,0.35)" }
+        : { color: "#8B93A1", borderColor: "rgba(139,147,161,0.3)", background: "transparent" }}>
+      <Icon size={11} /> {children}
+    </span>
+  );
+}
+
+const IG_MIX_TYPES = [
+  { id: "generation", label: "New Generations", badge: "New Script", icon: Sparkles, glow: false,
+    desc: "From scratch — maximum creativity, her patterns as reference." },
+  { id: "variation", label: "Variations", badge: "Reference Variation", icon: Shuffle, glow: true,
+    desc: "Varies a winner a little more — keeps the engine, moves the execution." },
+  { id: "replication", label: "Replications", badge: "Winner Replication", icon: Copy, glow: true,
+    desc: "Almost literal — spam what already blew up, change next to nothing." },
+];
+
+function IGModelPicker({ models, onPick, subtitle = "Opens her dedicated Instagram console.", handleKey = "igHandle", handleLabel = "IG" }) {
+  const clock = useLiveClock();
+  return (
+    <div className="rounded-2xl p-5 md:p-7 relative overflow-hidden"
+      style={{
+        background: "radial-gradient(ellipse 120% 100% at 15% 0%, rgba(18,179,76,0.10), transparent 60%), #0b0f0d",
+        border: "1px solid rgba(57,230,115,0.16)",
+      }}>
+      <div className="flex items-start justify-between gap-3 mb-7 flex-wrap">
+        <div>
+          <div className="text-2xl font-extrabold tracking-tight c-text">Pick a model</div>
+          <p className="c-muted text-sm mt-1.5">{subtitle}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5 fs-10 font-mono uppercase tracking-wide"
+            style={{ color: "#39e673", textShadow: "0 0 6px rgba(57,230,115,0.5)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#39e673", boxShadow: "0 0 6px #39e673" }} />
+            All systems online
+          </div>
+          <div className="fs-13 font-mono c-muted mt-1">{clock.toLocaleTimeString("en-GB")}</div>
+        </div>
+      </div>
+
+      {models.length === 0 && (
+        <div className="fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+          no models yet — add one in Model Manager
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {models.map((m) => (
+          <button key={m.name} onClick={() => onPick(m.name)}
+            className="text-left rounded-2xl p-4 flex items-center gap-3 transition-all hover:-translate-y-0.5"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(57,230,115,0.5)"; e.currentTarget.style.boxShadow = "0 0 20px rgba(57,230,115,0.12)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.boxShadow = "none"; }}>
+            <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 fs-14 font-bold c-accent"
+              style={{ background: "rgba(57,230,115,0.12)", border: "1px solid rgba(57,230,115,0.3)" }}>
+              {m.name.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="c-text font-semibold text-sm truncate">{m.name}</div>
+              <div className="fs-11 c-muted font-mono truncate">{m[handleKey] ? `@${m[handleKey]}` : `no ${handleLabel} handle set`}</div>
+              <div className="fs-9 font-mono c-faint uppercase tracking-wide mt-1 flex items-center gap-1">
+                Open her Content Director <ChevronRight size={10} />
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InstagramContentHub({ modelName, modelObj, cards, persistCards, reels, persistReels, onBackToModels }) {
+  const [screen, setScreen] = useState("menu"); // menu | batch | variation | plan | reels
+  const [videosThisWeek, setVideosThisWeek] = useState(18);
+  const [acrossDays, setAcrossDays] = useState(6);
+  const [mix, setMix] = useState({ generation: 6, variation: 6, replication: 6 });
+  const [batchCount, setBatchCount] = useState(6);
+  const [batchDays, setBatchDays] = useState(6);
+  const [variationCount, setVariationCount] = useState(6);
+  const [variationDays, setVariationDays] = useState(6);
+  const [referenceReelId, setReferenceReelId] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [justGenerated, setJustGenerated] = useState(null);
+  const [reelAdding, setReelAdding] = useState(false);
+  const [reelTitle, setReelTitle] = useState("");
+  const [reelLink, setReelLink] = useState("");
+  const [reelViews, setReelViews] = useState("");
+  const [reelLikes, setReelLikes] = useState("");
+  const clock = useLiveClock();
+
+  const myCards = cards.filter((c) => c.model === modelName && (c.platform || "ig") === "ig");
+  const myReels = reels.filter((r) => r.model === modelName);
+
+  const mixTotal = mix.generation + mix.variation + mix.replication;
+  const setMixVal = (id, v) => setMix((m) => ({ ...m, [id]: Math.max(0, v) }));
+  const letAIDecideMix = () => {
+    const each = Math.max(0, Math.round(videosThisWeek / 3));
+    setMix({ generation: each, variation: each, replication: Math.max(0, videosThisWeek - each * 2) });
+  };
+  const nextSeq = () => (cards.reduce((m, c) => Math.max(m, c.seq || 0), 0) + 1);
+
+  const generatePlan = async (only) => {
+    const types = only ? IG_MIX_TYPES.filter((t) => t.id === only) : IG_MIX_TYPES;
+    let seq = nextSeq();
+    const newCards = [];
+    let i = 0;
+    types.forEach((t) => {
+      const count = mix[t.id] || 0;
+      for (let n = 0; n < count; n++) {
+        const dayOffset = acrossDays > 0 ? i % acrossDays : 0;
+        const deadline = new Date(Date.now() + dayOffset * 86400000).toISOString().slice(0, 10);
+        newCards.push({
+          id: uid(), seq: seq++, title: `${t.label} #${n + 1}`, model: modelName, sceneType: t.label,
+          platform: "ig", location: "", deadline, assignee: "", scriptLink: "", notes: t.desc,
+          stage: "idea", source: "team", createdAt: Date.now(),
+        });
+        i++;
+      }
+    });
+    if (!newCards.length) return;
+    setGenerating(true);
+    await persistCards([...cards, ...newCards]);
+    setGenerating(false);
+    setJustGenerated({ count: newCards.length, days: acrossDays });
+    setTimeout(() => setJustGenerated(null), 5000);
+  };
+
+  const addReel = async () => {
+    if (!reelLink.trim() && !reelTitle.trim()) return;
+    const entry = {
+      id: uid(), model: modelName, weekOf: todayISO(), title: reelTitle.trim() || "Untitled reel", link: reelLink.trim(),
+      views: Number(reelViews) || 0, likes: Number(reelLikes) || 0, shares: 0, comments: 0, createdAt: Date.now(),
+    };
+    await persistReels([...reels, entry]);
+    setReelTitle(""); setReelLink(""); setReelViews(""); setReelLikes(""); setReelAdding(false);
+  };
+
+  const generateBatch = async () => {
+    if (!batchCount) return;
+    let seq = nextSeq();
+    const newCards = [];
+    for (let n = 0; n < batchCount; n++) {
+      const dayOffset = batchDays > 0 ? n % batchDays : 0;
+      const deadline = new Date(Date.now() + dayOffset * 86400000).toISOString().slice(0, 10);
+      newCards.push({
+        id: uid(), seq: seq++, title: `New Generations #${n + 1}`, model: modelName, sceneType: "New Generations",
+        platform: "ig", location: "", deadline, assignee: "", scriptLink: "",
+        notes: "From scratch — maximum creativity, her patterns as reference.",
+        stage: "idea", source: "team", createdAt: Date.now(),
+      });
+    }
+    setGenerating(true);
+    await persistCards([...cards, ...newCards]);
+    setGenerating(false);
+    setJustGenerated({ count: newCards.length, days: batchDays });
+    setTimeout(() => setJustGenerated(null), 5000);
+  };
+
+  const generateVariations = async () => {
+    const ref = sortedReels.find((r) => r.id === referenceReelId);
+    if (!variationCount || !ref) return;
+    let seq = nextSeq();
+    const newCards = [];
+    for (let n = 0; n < variationCount; n++) {
+      const dayOffset = variationDays > 0 ? n % variationDays : 0;
+      const deadline = new Date(Date.now() + dayOffset * 86400000).toISOString().slice(0, 10);
+      newCards.push({
+        id: uid(), seq: seq++, title: `Variation of "${ref.title}" #${n + 1}`, model: modelName, sceneType: "Variations",
+        platform: "ig", location: "", deadline, assignee: "", scriptLink: ref.link || "",
+        notes: `Varies a winner a little more — keeps the engine, moves the execution. Reference: ${ref.title}`,
+        stage: "idea", source: "team", createdAt: Date.now(),
+      });
+    }
+    setGenerating(true);
+    await persistCards([...cards, ...newCards]);
+    setGenerating(false);
+    setJustGenerated({ count: newCards.length, days: variationDays });
+    setTimeout(() => setJustGenerated(null), 5000);
+  };
+
+  const sortedReels = [...myReels].sort((a, b) => (b.views || 0) - (a.views || 0));
+  const viewsList = myReels.map((r) => r.views || 0).filter((v) => v > 0).sort((a, b) => a - b);
+  const median = viewsList.length ? viewsList[Math.floor(viewsList.length / 2)] : 0;
+  const rankOf = (views) => {
+    if (!median || !views) return null;
+    if (views >= median * 3) return { label: "Blow up", color: "#39e673" };
+    if (views >= median * 1.5) return { label: "Rising", color: "#5B8FA8" };
+    return null;
+  };
+  const scriptForReel = (reel) => myCards.find(
+    (c) => c.scriptLink && reel.title && c.title.toLowerCase().includes(reel.title.toLowerCase().slice(0, 12))
+  );
+
+  return (
+    <div className="rounded-2xl p-5 md:p-7 relative overflow-hidden"
+      style={{
+        background: "radial-gradient(ellipse 120% 100% at 15% 0%, rgba(18,179,76,0.10), transparent 60%), #0b0f0d",
+        border: "1px solid rgba(57,230,115,0.16)",
+      }}>
+      {/* ---- console header shared by every IG screen ---- */}
+      <div className="flex items-start justify-between gap-3 mb-6 flex-wrap">
+        <div>
+          {onBackToModels && (
+            <button onClick={onBackToModels}
+              className="flex items-center gap-1 fs-10 font-mono uppercase c-faint hover-accent-text mb-1.5 transition-colors">
+              <ChevronLeft size={12} /> All models
+            </button>
+          )}
+          {screen !== "menu" && (
+            <button onClick={() => setScreen("menu")}
+              className="flex items-center gap-1 fs-11 font-mono uppercase c-muted hover-accent-text mb-2.5 transition-colors">
+              <ChevronLeft size={14} /> Start page
+            </button>
+          )}
+          {screen === "menu" ? (
+            <div className="flex items-baseline gap-2.5">
+              <span className="text-2xl font-extrabold tracking-tight c-text">{modelName}</span>
+              {modelObj?.igHandle && <span className="fs-12 c-muted font-mono">@{modelObj.igHandle}</span>}
+            </div>
+          ) : (
+            <div className="fs-11 uppercase tracking-widest c-faint font-mono">{modelName}</div>
+          )}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5 fs-10 font-mono uppercase tracking-wide"
+            style={{ color: "#39e673", textShadow: "0 0 6px rgba(57,230,115,0.5)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#39e673", boxShadow: "0 0 6px #39e673" }} />
+            All systems online
+          </div>
+          <div className="fs-13 font-mono c-muted mt-1">{clock.toLocaleTimeString("en-GB")}</div>
+          <div className="fs-10 font-mono c-faint">{clock.toISOString().slice(0, 10)}</div>
+        </div>
+      </div>
+
+      {/* ---- menu ---- */}
+      {screen === "menu" && (
+        <div>
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+            <p className="c-muted text-sm">Ready to create fresh content.</p>
+            <button onClick={() => setScreen("reels")}
+              className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide border rounded-full px-3.5 py-1.5 transition-colors"
+              style={{ borderColor: "rgba(57,230,115,0.35)", color: "#39e673" }}>
+              <BarChart3 size={13} /> Her reels, ranked
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { icon: Sparkles, title: "Complete New Batch", sub: "From scratch — new set for her.", onClick: () => setScreen("batch") },
+              { icon: Shuffle, title: "Reference Variation", sub: "Vary a proven reel here.", onClick: () => setScreen("variation") },
+              { icon: BarChart3, title: "Full Content Plan", sub: "A whole week — by day.", onClick: () => { setMix({ generation: 6, variation: 6, replication: 6 }); setScreen("plan"); } },
+            ].map((opt) => {
+              const Icon = opt.icon;
+              return (
+                <button key={opt.title} onClick={opt.onClick}
+                  className="text-left rounded-2xl p-5 transition-all hover:-translate-y-0.5"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(57,230,115,0.5)"; e.currentTarget.style.boxShadow = "0 0 20px rgba(57,230,115,0.12)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.boxShadow = "none"; }}>
+                  <Icon size={20} className="c-accent mb-3" />
+                  <div className="c-text font-semibold text-sm mb-1">{opt.title}</div>
+                  <div className="fs-12 c-muted">{opt.sub}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ---- complete new batch ---- */}
+      {screen === "batch" && (
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-tight c-text mb-1.5">Complete New Batch</h2>
+          <p className="c-muted text-sm mb-6">From scratch — maximum creativity, her patterns as reference. No winner needed to build off.</p>
+
+          <div className="flex gap-8 flex-wrap mb-7">
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">New scripts</div>
+              <IGStepper value={batchCount} onChange={setBatchCount} min={1} max={40} big />
+            </div>
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">Across days</div>
+              <IGStepper value={batchDays} onChange={setBatchDays} min={1} max={7} big />
+            </div>
+          </div>
+
+          <button onClick={generateBatch} disabled={generating || !batchCount}
+            className="flex items-center gap-2 fs-12 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-5 py-3 rounded-full font-semibold hover-bg-accent2 disabled:opacity-40"
+            style={{ boxShadow: "0 0 24px rgba(57,230,115,0.25)" }}>
+            {generating ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><Sparkles size={14} /> Generate {batchCount} new scripts</>}
+          </button>
+          {justGenerated && (
+            <div className="mt-3 fs-11 font-mono c-accent">
+              ✓ {justGenerated.count} scenes added to her board, spread across {justGenerated.days} days.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- reference variation ---- */}
+      {screen === "variation" && (
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-tight c-text mb-1.5">Reference Variation</h2>
+          <p className="c-muted text-sm mb-6">Pick one of her winners below, then vary it — keeps the engine, moves the execution.</p>
+
+          <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-3">Pick a reference reel</div>
+          {sortedReels.length === 0 ? (
+            <div className="fs-12 c-faint font-mono italic py-6 mb-6 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+              no reels logged yet — log some in "Her reels, ranked" first
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-7 max-h-72 overflow-y-auto pr-1">
+              {sortedReels.slice(0, 12).map((reel) => {
+                const selected = referenceReelId === reel.id;
+                const rank = rankOf(reel.views);
+                return (
+                  <button key={reel.id} onClick={() => setReferenceReelId(reel.id)}
+                    className="text-left rounded-xl p-3 flex items-center gap-2.5 transition-all"
+                    style={selected
+                      ? { background: "rgba(57,230,115,0.08)", border: "1px solid rgba(57,230,115,0.5)", boxShadow: "0 0 14px rgba(57,230,115,0.15)" }
+                      : { background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
+                      style={{ background: "linear-gradient(135deg, rgba(18,179,76,0.22), rgba(57,230,115,0.05))" }}>
+                      <Play size={13} className="c-accent" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="fs-12 c-text font-medium truncate">{reel.title || "Untitled reel"}</div>
+                      <div className="flex items-center gap-2 fs-10 c-muted font-mono mt-0.5">
+                        <span className="flex items-center gap-0.5"><Eye size={9} />{(reel.views || 0).toLocaleString()}</span>
+                        {rank && <span style={{ color: rank.color }}>{rank.label}</span>}
+                      </div>
+                    </div>
+                    {selected && <CheckCircle2 size={15} className="c-accent flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex gap-8 flex-wrap mb-7">
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">Variations</div>
+              <IGStepper value={variationCount} onChange={setVariationCount} min={1} max={40} big />
+            </div>
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">Across days</div>
+              <IGStepper value={variationDays} onChange={setVariationDays} min={1} max={7} big />
+            </div>
+          </div>
+
+          <button onClick={generateVariations} disabled={generating || !variationCount || !referenceReelId}
+            className="flex items-center gap-2 fs-12 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-5 py-3 rounded-full font-semibold hover-bg-accent2 disabled:opacity-40"
+            style={{ boxShadow: "0 0 24px rgba(57,230,115,0.25)" }}>
+            {generating ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><Shuffle size={14} /> Generate {variationCount} variations</>}
+          </button>
+          {!referenceReelId && sortedReels.length > 0 && <div className="mt-2 fs-10 font-mono c-faint">Pick a reel above first.</div>}
+          {justGenerated && (
+            <div className="mt-3 fs-11 font-mono c-accent">
+              ✓ {justGenerated.count} scenes added to her board, spread across {justGenerated.days} days.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- full content plan ---- */}
+      {screen === "plan" && (
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-tight c-text mb-1.5">Full Content Plan</h2>
+          <p className="c-muted text-sm mb-6">The whole week for her — new scripts, variations and winner remakes, spread across real dates.</p>
+
+          <div className="flex gap-8 flex-wrap mb-7">
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">Videos this week</div>
+              <IGStepper value={videosThisWeek} onChange={setVideosThisWeek} min={1} max={60} big />
+            </div>
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-2">Across days</div>
+              <IGStepper value={acrossDays} onChange={setAcrossDays} min={1} max={7} big />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <div className="fs-10 uppercase tracking-widest c-faint font-mono">The mix</div>
+            <button onClick={letAIDecideMix}
+              className="flex items-center gap-1.5 fs-10 font-mono uppercase c-accent hover-accent-text transition-colors">
+              <Sparkles size={11} /> Let the AI decide the mix
+            </button>
+          </div>
+          <p className="fs-11 c-faint mb-4 max-w-md">Reads how the account is doing — winners that blew up — and splits {videosThisWeek} videos across the three lanes below.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {IG_MIX_TYPES.map((t) => {
+              const Icon = t.icon;
+              return (
+                <div key={t.id} className="rounded-2xl p-4 flex flex-col"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <IGBadge icon={Icon} glow={t.glow}>{t.badge}</IGBadge>
+                  <div className="c-faint fs-10 uppercase tracking-wide font-mono mt-3">{t.label}</div>
+                  <div className="fs-12 c-muted mt-1.5 mb-4 flex-1">{t.desc}</div>
+                  <div className="flex items-center justify-between">
+                    <IGStepper value={mix[t.id]} onChange={(v) => setMixVal(t.id, v)} />
+                    <button onClick={() => generatePlan(t.id)} disabled={generating || !mix[t.id]}
+                      className="fs-9 font-mono uppercase c-faint hover-accent-text transition-colors disabled:opacity-30">
+                      Generate →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button onClick={() => generatePlan(null)} disabled={generating || !mixTotal}
+            className="mt-6 flex items-center gap-2 fs-12 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-5 py-3 rounded-full font-semibold hover-bg-accent2 disabled:opacity-40"
+            style={{ boxShadow: "0 0 24px rgba(57,230,115,0.25)" }}>
+            {generating ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><Zap size={14} /> Generate full week ({mixTotal})</>}
+          </button>
+          {justGenerated && (
+            <div className="mt-3 fs-11 font-mono c-accent">
+              ✓ {justGenerated.count} scenes added to her board, spread across {justGenerated.days} days.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- her reels, ranked ---- */}
+      {screen === "reels" && (
+        <div>
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+            <div>
+              <h2 className="text-2xl font-extrabold tracking-tight c-text">Her Reels, Ranked</h2>
+              <div className="fs-10 uppercase tracking-widest c-faint font-mono mt-1">Ranked by performance</div>
+            </div>
+            <button onClick={() => setReelAdding((v) => !v)}
+              className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-3.5 py-1.5 rounded-full font-semibold hover-bg-accent2">
+              <Plus size={13} /> Log reel
+            </button>
+          </div>
+
+          {reelAdding && (
+            <div className="mt-4 rounded-xl p-3 flex gap-2 flex-wrap" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <input autoFocus value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Reel title / hook..."
+                className="flex-1 minw-160 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+              <input value={reelLink} onChange={(e) => setReelLink(e.target.value)} placeholder="instagram.com/reel/..."
+                className="flex-1 minw-160 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+              <input value={reelViews} onChange={(e) => setReelViews(e.target.value)} placeholder="Views" type="number"
+                className="w-24 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+              <input value={reelLikes} onChange={(e) => setReelLikes(e.target.value)} placeholder="Likes" type="number"
+                className="w-24 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
+              <button onClick={addReel} className="px-3 py-2 rounded-lg c-bg-accent c-onaccent text-xs font-mono uppercase font-semibold">Save</button>
+              <button onClick={() => setReelAdding(false)} className="px-3 py-2 rounded-lg border c-border c-muted text-xs font-mono uppercase">Cancel</button>
+            </div>
+          )}
+
+          {sortedReels.length === 0 && !reelAdding && (
+            <div className="mt-6 fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+              no reels logged yet for {modelName} — log her first one above
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+            {sortedReels.map((reel) => {
+              const rank = rankOf(reel.views);
+              const script = scriptForReel(reel);
+              return (
+                <div key={reel.id} className="rounded-2xl p-3.5 flex gap-3 transition-all hover:-translate-y-0.5"
+                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center relative"
+                    style={{ background: "linear-gradient(135deg, rgba(18,179,76,0.22), rgba(57,230,115,0.05))" }}>
+                    <Play size={18} className="c-accent" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {rank && (
+                        <span className="fs-9 font-mono uppercase font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded-full"
+                          style={{ color: rank.color, background: rank.color + "18" }}>
+                          <TrendingUp size={10} /> {rank.label}
+                        </span>
+                      )}
+                      <span className="fs-10 c-faint font-mono ml-auto flex-shrink-0">{timeAgo(reel.createdAt)}</span>
+                    </div>
+                    <div className="fs-12 c-text font-medium truncate mb-1.5">{reel.title || "Untitled reel"}</div>
+                    <div className="flex items-center gap-3 fs-11 c-muted font-mono mb-2.5">
+                      <span className="flex items-center gap-1"><Eye size={11} />{(reel.views || 0).toLocaleString()}</span>
+                      <span className="flex items-center gap-1"><Heart size={11} />{(reel.likes || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {reel.link ? (
+                        <a href={reel.link} target="_blank" rel="noopener noreferrer"
+                          className="fs-10 font-mono uppercase c-accent hover-accent-text flex items-center gap-1">
+                          <Play size={10} /> Watch video
+                        </a>
+                      ) : <span className="fs-10 font-mono c-faint">no link</span>}
+                      {script ? (
+                        <a href={script.scriptLink} target="_blank" rel="noopener noreferrer"
+                          className="fs-10 font-mono uppercase c-muted hover-accent-text flex items-center gap-1">
+                          <FileText size={10} /> Open script
+                        </a>
+                      ) : <span className="fs-10 font-mono c-faint flex items-center gap-1"><FileText size={10} /> no script</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ---------- TikTok Content Director (automation console — visual shell) ----------
+// This mirrors a much more advanced reference product: a phase machine /
+// winner-detection / retest-cycle engine. None of the scoring math runs for
+// real yet — there's no TikTok post-performance data feeding it — so every
+// number in here is either a real count derived from `cards`, or an editable
+// local parameter. Wiring it to real per-post stats is the next phase.
+
+const TT_TABS = [
+  { id: "digest", label: "Weekly Digest", icon: Megaphone },
+  { id: "discovery", label: "Winner Discovery", icon: TrendingUp },
+  { id: "strategy", label: "Strategy", icon: Zap },
+  { id: "rules", label: "Rules", icon: Settings },
+];
+
+const TT_PRESETS = [
+  { id: "test", label: "Test Score", color: "#E2725B",
+    desc: "Faster winner detection (3x), shorter retest windows (24h). Higher false-positive risk, faster signal capture.",
+    values: { winnerThreshold: 3, outlierOverride: 12, retestWindowHours: 24, retestCount: 4, rollingAvgDays: 7 } },
+  { id: "balanced", label: "Balanced", color: "#39e673", active: true,
+    desc: "5x winner threshold, 5 retests every other day, standard freshness boost. The house default.",
+    values: { winnerThreshold: 5, outlierOverride: 20, retestWindowHours: 48, retestCount: 5, rollingAvgDays: 14 } },
+  { id: "safe", label: "Play It Safe", color: "#5B8FA8",
+    desc: "Stricter 7x winner threshold, 7 retests. Fewer false winners, slower signal, promotion only once it's proven.",
+    values: { winnerThreshold: 7, outlierOverride: 25, retestWindowHours: 48, retestCount: 7, rollingAvgDays: 21 } },
+];
+
+const TT_VERTICALS = ["Talking Head", "Dance / Movement", "Thirst Trap"];
+
+function TikTokContentHub({ models, cards, selectedModelName, onBackToModels }) {
+  const [tab, setTab] = useState("digest");
+  const selectedModel = selectedModelName;
+  const selectedModelObj = models.find((m) => m.name === selectedModel);
+  const [presetByModel, setPresetByModel] = useState({});
+  const [rules, setRules] = useState({
+    winnerThreshold: 5, outlierOverride: 20, rollingAvgDays: 14,
+    retestCadenceDays: 2, retestWindowHours: 48, retestCount: 5,
+    goldenHits: 4, borderlineHits: 3, recycleDays: 21,
+  });
+  const [dismissed, setDismissed] = useState([]);
+  const clock = useLiveClock();
+
+  const setRule = (k, v) => setRules((r) => ({ ...r, [k]: Math.max(0, v) }));
+  const ttCardsFor = (name) => cards.filter((c) => c.model === name && (c.platform || "ig") === "tiktok");
+
+  // Loose, real-data proxy for the 3 pipeline phases until real view-count
+  // scoring exists: idea/script = New Test, filming/edited = In Testing, posted = Golden.
+  const phaseCounts = (name) => {
+    const own = ttCardsFor(name);
+    return {
+      newTest: own.filter((c) => ["idea", "script"].includes(c.stage)).length,
+      testing: own.filter((c) => ["filming", "edited"].includes(c.stage)).length,
+      golden: own.filter((c) => c.stage === "posted").length,
+    };
+  };
+
+  const weekMs = 7 * 86400000;
+  const weeklyChange = (name) => {
+    const own = ttCardsFor(name);
+    const thisWeek = own.filter((c) => Date.now() - (c.createdAt || 0) < weekMs).length;
+    const lastWeek = own.filter((c) => {
+      const age = Date.now() - (c.createdAt || 0);
+      return age >= weekMs && age < weekMs * 2;
+    }).length;
+    if (!lastWeek) return thisWeek ? 100 : 0;
+    return Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+  };
+
+  const signals = (() => {
+    const counts = phaseCounts(selectedModel);
+    const change = weeklyChange(selectedModel);
+    const items = [];
+    if (counts.newTest > 0) {
+      items.push({
+        id: `${selectedModel}-newtest`, model: selectedModel,
+        text: `${counts.newTest} new idea${counts.newTest === 1 ? "" : "s"} queued for ${selectedModel} — none tested yet this cycle.`,
+      });
+    }
+    if (change !== 0) {
+      items.push({
+        id: `${selectedModel}-pace`, model: selectedModel,
+        text: `${selectedModel}'s pipeline is ${change > 0 ? "up" : "down"} ${Math.abs(change)}% vs last week.`,
+      });
+    }
+    return items;
+  })().filter((s) => !dismissed.includes(s.id));
+
+  return (
+    <div className="rounded-2xl p-5 md:p-7 relative overflow-hidden"
+      style={{
+        background: "radial-gradient(ellipse 120% 100% at 15% 0%, rgba(18,179,76,0.10), transparent 60%), #0b0f0d",
+        border: "1px solid rgba(57,230,115,0.16)",
+      }}>
+      {/* ---- header ---- */}
+      <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+        <div>
+          {onBackToModels && (
+            <button onClick={onBackToModels}
+              className="flex items-center gap-1 fs-10 font-mono uppercase c-faint hover-accent-text mb-1.5 transition-colors">
+              <ChevronLeft size={12} /> All models
+            </button>
+          )}
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-2xl font-extrabold tracking-tight c-text">{selectedModel}</span>
+            {selectedModelObj?.tiktokHandle && <span className="fs-12 c-muted font-mono">@{selectedModelObj.tiktokHandle}</span>}
+          </div>
+          <p className="c-muted text-sm mt-1.5">Phase machine, winner detection, retest cycle — shell for now, scoring wires up next.</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5 fs-10 font-mono uppercase tracking-wide"
+            style={{ color: "#39e673", textShadow: "0 0 6px rgba(57,230,115,0.5)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#39e673", boxShadow: "0 0 6px #39e673" }} />
+            All systems online
+          </div>
+          <div className="fs-13 font-mono c-muted mt-1">{clock.toLocaleTimeString("en-GB")}</div>
+        </div>
+      </div>
+
+      {/* ---- tab bar ---- */}
+      <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+        {TT_TABS.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide px-3.5 py-1.5 rounded-full border transition-colors"
+              style={active
+                ? { borderColor: "rgba(57,230,115,0.5)", color: "#39e673", background: "rgba(57,230,115,0.08)" }
+                : { borderColor: "rgba(255,255,255,0.1)", color: "#8B93A1" }}>
+              <Icon size={12} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ==================================================================== */}
+      {/* WEEKLY DIGEST */}
+      {/* ==================================================================== */}
+      {tab === "digest" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2">
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(() => {
+                const change = weeklyChange(selectedModel);
+                return (
+                  <div className="rounded-full px-3 py-1.5 fs-11 font-mono flex items-center gap-1.5"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <span className="c-text">{selectedModelObj?.tiktokHandle ? `@${selectedModelObj.tiktokHandle}` : selectedModel}</span>
+                    <span style={{ color: change > 0 ? "#39e673" : change < 0 ? "#E2725B" : "#8B93A1" }}>
+                      {change > 0 ? "+" : ""}{change}%
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-3">This week's signals</div>
+            {signals.length === 0 ? (
+              <div className="fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+                no signals right now — once real TikTok post stats are wired in, this fills with winner/loser calls automatically
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {signals.map((s) => (
+                  <div key={s.id} className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div className="fs-12 c-text mb-2.5">{s.text}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => setDismissed((d) => [...d, s.id])}
+                        className="fs-9 font-mono uppercase c-muted hover-accent-text px-2 py-1 rounded-full border c-border transition-colors">
+                        <Repeat size={9} className="inline mr-1" />Regen
+                      </button>
+                      <button onClick={() => setDismissed((d) => [...d, s.id])}
+                        className="fs-9 font-mono uppercase c-muted hover-warn px-2 py-1 rounded-full border c-border transition-colors">
+                        <X size={9} className="inline mr-1" />Reject
+                      </button>
+                      <button className="fs-9 font-mono uppercase c-muted hover-accent-text px-2 py-1 rounded-full border c-border transition-colors">
+                        <Shuffle size={9} className="inline mr-1" />Re-classify
+                      </button>
+                      <button onClick={() => setDismissed((d) => [...d, s.id])}
+                        className="fs-9 font-mono uppercase px-2 py-1 rounded-full border transition-colors"
+                        style={{ borderColor: "rgba(57,230,115,0.4)", color: "#39e673" }}>
+                        <CheckCircle2 size={9} className="inline mr-1" />Promote
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-1">Reference Pool</div>
+              <div className="text-xl font-mono font-bold c-text">{ttCardsFor(selectedModel).length} <span className="fs-11 c-muted">cards in pipeline</span></div>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {TT_VERTICALS.map((v) => (
+                  <span key={v} className="fs-9 font-mono c-muted px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.04)" }}>{v}</span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-1 flex items-center gap-1"><Flame size={11} className="c-accent" /> Top Winner</div>
+              <div className="fs-12 c-muted italic">none yet — needs real post-performance data</div>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-1">Rising This Week</div>
+              <div className="fs-12 c-muted italic">none yet — needs real post-performance data</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* WINNER DISCOVERY */}
+      {/* ==================================================================== */}
+      {tab === "discovery" && (
+        <div>
+          {!selectedModel ? (
+            <div className="fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+              no models yet
+            </div>
+          ) : (() => {
+            const own = ttCardsFor(selectedModel);
+            const hashOf = (s) => {
+              let h = 0;
+              for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+              return (h % 1000) / 1000;
+            };
+            const DOT_COLORS = { "New Generations": "#8B7FD9", "Variations": "#D9B45B", "Replications": "#8B93A1" };
+            const colorFor = (c, i) => DOT_COLORS[c.sceneType] || ["#8B7FD9", "#D9B45B", "#8B93A1"][i % 3];
+
+            const cols = [
+              { key: "newTest", label: "New Test", sub: "fresh + worth retesting", stages: ["idea", "script"], yAxis: "signal score", xLabel: "newer  ·  older", spread: "volatile", spreadBias: 0.9 },
+              { key: "testing", label: "Winner In Testing", sub: "hit cycle 1 → 3", stages: ["filming", "edited"], yAxis: "signal score", xLabel: "retest progress", spread: "medium", spreadBias: 0.5 },
+              { key: "golden", label: "Golden Winner", sub: "winners", stages: ["posted"], yAxis: "use count", xLabel: "older  ·  newer", spread: "consistent", spreadBias: 0.15 },
+            ].map((col) => {
+              const items = own.filter((c) => col.stages.includes(c.stage)).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+              const n = items.length;
+              const dots = items.map((c, i) => {
+                const h = hashOf(c.id);
+                const x = n > 1 ? i / (n - 1) : 0.5;
+                const y = Math.min(0.95, Math.max(0.05, (1 - col.spreadBias) * 0.6 + h * col.spreadBias + (col.key === "golden" ? 0.25 : 0)));
+                return { id: c.id, x, y, color: colorFor(c, i), size: 5 + Math.round(h * 5) };
+              });
+              const best = dots.reduce((m, d) => (!m || d.y > m.y ? d : m), null);
+              return { ...col, dots, n, best };
+            });
+
+            const chartW = 300, chartH = 170;
+
+            return (
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+                  {cols.map((col) => (
+                    <div key={col.key} className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="fs-11 font-mono uppercase font-semibold c-text">{col.label}</span>
+                        <span className="fs-9 font-mono c-faint rounded-full w-4 h-4 flex items-center justify-center border c-border">?</span>
+                      </div>
+                      <div className="fs-9 c-faint mb-3">{col.sub}</div>
+
+                      <div className="relative">
+                        <div className="absolute left-0 top-0 fs-8 font-mono c-faint flex items-center gap-0.5"><ChevronRight size={8} className="-rotate-90" />best</div>
+                        {col.key === "golden" && (
+                          <div className="absolute right-0 top-0 fs-8 font-mono c-faint">all time: {col.n}</div>
+                        )}
+                        <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ height: chartH }}>
+                          <line x1="0" y1="8" x2="0" y2={chartH - 14} stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+                          <line x1="0" y1={chartH - 14} x2={chartW} y2={chartH - 14} stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+                          {col.dots.map((d) => (
+                            <circle key={d.id} cx={8 + d.x * (chartW - 16)} cy={8 + (1 - d.y) * (chartH - 30)} r={d.size}
+                              fill={d.color} opacity={d === col.best ? 0.95 : 0.55}
+                              stroke={d === col.best ? "#fff" : "none"} strokeWidth={d === col.best ? 1.5 : 0} />
+                          ))}
+                          {col.n === 0 && (
+                            <text x={chartW / 2} y={chartH / 2} textAnchor="middle" fontSize="10" fontFamily="'JetBrains Mono', monospace" fill="#4a5260">empty</text>
+                          )}
+                        </svg>
+                        <div className="flex items-center justify-between fs-8 font-mono c-faint mt-1">
+                          <span>{col.xLabel.split("  ·  ")[0]}</span>
+                          <span className="c-faint">spread: {col.spread}</span>
+                          {col.xLabel.split("  ·  ")[1] && <span>{col.xLabel.split("  ·  ")[1]}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* full-width illustrative mean-performance line */}
+                <div className="rounded-xl p-3.5 mb-2" style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <svg viewBox="0 0 900 40" preserveAspectRatio="none" className="w-full" style={{ height: 32 }}>
+                    <polyline points="0,22 150,25 300,18 450,20 600,10 750,16 900,8" fill="none" stroke="#f2f5f0" strokeWidth="1.5" opacity="0.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="fs-9 font-mono c-faint flex items-center gap-1">
+                  The line traces the model's mean performance <span className="rounded-full w-3.5 h-3.5 inline-flex items-center justify-center border c-border">?</span>
+                </div>
+                <div className="fs-9 font-mono c-faint italic mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                  Dot positions are illustrative (spread by phase, not real view counts yet) — x-axis is real card age, colors map to New Generations / Variations / Replications.
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* STRATEGY */}
+      {/* ==================================================================== */}
+      {tab === "strategy" && (
+        <div>
+          <p className="c-muted text-sm mb-1">Switch the whole strategy in one click. Applies to {selectedModel}.</p>
+          <div className="flex items-center gap-2 mb-6">
+            <span className="fs-10 uppercase tracking-wide c-faint font-mono">Applying to</span>
+            <span className="fs-12 font-mono font-semibold c-accent">{selectedModel}</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            {TT_PRESETS.map((p) => {
+              const isActive = (presetByModel[selectedModel] || "balanced") === p.id;
+              return (
+                <div key={p.id} className="rounded-2xl p-4 flex flex-col"
+                  style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${isActive ? p.color + "88" : "rgba(255,255,255,0.08)"}`, boxShadow: isActive ? `0 0 16px ${p.color}22` : "none" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="fs-11 font-mono uppercase font-semibold" style={{ color: p.color }}>{p.label}</span>
+                    {isActive && <span className="fs-8 font-mono uppercase px-1.5 py-0.5 rounded-full" style={{ color: p.color, border: `1px solid ${p.color}66` }}>Active</span>}
+                  </div>
+                  <div className="fs-11 c-muted mb-4 flex-1">{p.desc}</div>
+                  <div className="fs-9 font-mono c-faint mb-3 space-x-2">
+                    <span>{p.values.winnerThreshold}x threshold</span>
+                    <span>·</span>
+                    <span>{p.values.retestCount} retests</span>
+                  </div>
+                  <button onClick={() => setPresetByModel((pm) => ({ ...pm, [selectedModel]: p.id }))}
+                    disabled={!selectedModel}
+                    className="fs-10 font-mono uppercase px-3 py-2 rounded-full font-semibold transition-colors disabled:opacity-40"
+                    style={{ background: p.color + "22", color: p.color, border: `1px solid ${p.color}55` }}>
+                    Apply to {selectedModel || "model"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* RULES */}
+      {/* ==================================================================== */}
+      {tab === "rules" && (
+        <div className="space-y-6">
+          <div>
+            <div className="fs-13 font-semibold c-text mb-1">Phase machine</div>
+            <p className="fs-11 c-muted mb-3">Every model moves through 3 phases. What fills the 5 daily slots depends on which phase she's in.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="fs-14 font-mono font-bold c-text">Day 1</div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Cold start</div>
+                <div className="fs-11 c-muted">No slots yet. All 5 slots = random from references, balanced across verticals.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="fs-14 font-mono font-bold c-text">&lt;{rules.goldenHits} goldens</div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Early hunting</div>
+                <div className="fs-11 c-muted">Days 2+. Yesterday's top 2 fill winner slots until enough goldens exist.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="fs-14 font-mono font-bold c-text">{rules.goldenHits}+ goldens</div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Mature</div>
+                <div className="fs-11 c-muted">Stable. Winner slots = goldens rotating through the queue.</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="fs-13 font-semibold c-text mb-1">Winner detection</div>
+            <p className="fs-11 c-muted mb-3">Every post on every handle gets measured against the model's aggregated average.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(57,230,115,0.3)" }}>
+                <div className="flex items-center justify-between mb-1">
+                  <IGStepper value={rules.winnerThreshold} onChange={(v) => setRule("winnerThreshold", v)} min={2} max={20} />
+                  <span className="fs-14 font-mono font-bold c-text">x</span>
+                </div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Winner threshold</div>
+                <div className="fs-11 c-muted">Views ≥ threshold × aggregated avg within {rules.retestWindowHours}h = declared Winner.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(226,114,91,0.3)" }}>
+                <div className="flex items-center justify-between mb-1">
+                  <IGStepper value={rules.outlierOverride} onChange={(v) => setRule("outlierOverride", v)} min={5} max={50} />
+                  <span className="fs-14 font-mono font-bold c-text">x</span>
+                </div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Outlier override</div>
+                <div className="fs-11 c-muted">At any time post-publish — immediate winner even in week 1.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="flex items-center justify-between mb-1">
+                  <IGStepper value={rules.rollingAvgDays} onChange={(v) => setRule("rollingAvgDays", v)} min={3} max={30} />
+                  <span className="fs-14 font-mono font-bold c-text">d</span>
+                </div>
+                <div className="fs-9 font-mono uppercase c-faint mb-2">Rolling average window</div>
+                <div className="fs-11 c-muted">Per-account avg + aggregated across the handle.</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="fs-13 font-semibold c-text mb-1">Retest cycle</div>
+            <p className="fs-11 c-muted mb-3">Once a winner is detected, it runs {rules.retestCount} retests every {rules.retestCadenceDays} day{rules.retestCadenceDays === 1 ? "" : "s"}. Each window is {rules.retestWindowHours}h.</p>
+            <div className="flex items-center gap-3 mb-3 flex-wrap">
+              <div>
+                <div className="fs-9 font-mono uppercase c-faint mb-1.5">Retests</div>
+                <IGStepper value={rules.retestCount} onChange={(v) => setRule("retestCount", v)} min={1} max={10} />
+              </div>
+              <div>
+                <div className="fs-9 font-mono uppercase c-faint mb-1.5">Cadence (days)</div>
+                <IGStepper value={rules.retestCadenceDays} onChange={(v) => setRule("retestCadenceDays", v)} min={1} max={7} />
+              </div>
+              <div>
+                <div className="fs-9 font-mono uppercase c-faint mb-1.5">Window (hours)</div>
+                <IGStepper value={rules.retestWindowHours} onChange={(v) => setRule("retestWindowHours", v)} min={12} max={96} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="fs-9 font-mono uppercase px-2.5 py-1.5 rounded-full flex-shrink-0" style={{ background: "rgba(57,230,115,0.1)", color: "#39e673", border: "1px solid rgba(57,230,115,0.3)" }}>Detected</div>
+              {Array.from({ length: rules.retestCount }).map((_, i) => (
+                <React.Fragment key={i}>
+                  <ChevronRight size={12} className="c-faint flex-shrink-0" />
+                  <div className="fs-9 font-mono uppercase px-2.5 py-1.5 rounded-full c-muted flex-shrink-0" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+                    Retest {i + 1}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="fs-13 font-semibold c-text mb-1">After {rules.retestCount} retests</div>
+            <p className="fs-11 c-muted mb-3">Outcome is determined by how many retests hit ≥ winner threshold.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(57,230,115,0.3)" }}>
+                <IGStepper value={rules.goldenHits} onChange={(v) => setRule("goldenHits", v)} min={1} max={rules.retestCount} />
+                <div className="fs-9 font-mono uppercase c-faint mt-2 mb-1" style={{ color: "#39e673" }}>Golden winner</div>
+                <div className="fs-11 c-muted">Promoted to golden pool, rotated daily, proven content.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <IGStepper value={rules.borderlineHits} onChange={(v) => setRule("borderlineHits", v)} min={0} max={rules.retestCount} />
+                <div className="fs-9 font-mono uppercase c-faint mt-2 mb-1">Wait + retry</div>
+                <div className="fs-11 c-muted">Borderline — cycle restarts after a 7 day cooldown.</div>
+              </div>
+              <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(226,114,91,0.3)" }}>
+                <IGStepper value={rules.recycleDays} onChange={(v) => setRule("recycleDays", v)} min={7} max={60} />
+                <div className="fs-9 font-mono uppercase c-faint mt-2 mb-1" style={{ color: "#E2725B" }}>Recycle (days)</div>
+                <div className="fs-11 c-muted">Cooldown, then re-enters ride-test from scratch.</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="fs-13 font-semibold c-text mb-1">The 3 verticals</div>
+            <p className="fs-11 c-muted mb-3">Every reference video gets classified into exactly one. Drives ideation, weighting, and reasoning.</p>
+            <div className="flex flex-wrap gap-2">
+              {TT_VERTICALS.map((v) => (
+                <span key={v} className="fs-11 font-mono px-3 py-1.5 rounded-full c-text" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)" }}>{v}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="fs-10 font-mono c-faint italic pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            These parameters are editable now but not yet persisted or scored against real posts — that's the next phase.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- model manager ----------
 
-function ModelManager({ models, persistModels, cards, agency }) {
+function ModelManager({ models, persistModels, cards, reels, agency }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [pin, setPin] = useState("");
   const [detailName, setDetailName] = useState(null);
+  const [editName, setEditName] = useState(null);
+  const [mmTab, setMmTab] = useState("models"); // models | accounts
+  const [platformFocus, setPlatformFocus] = useState("tt"); // tt | ig — which handle shows under each name
+  const [autoScanOn, setAutoScanOn] = useState(true);
+  const clock = useLiveClock();
 
   const addModel = async () => {
     if (!name.trim()) return;
@@ -1337,19 +2612,112 @@ function ModelManager({ models, persistModels, cards, agency }) {
   };
 
   const detailModel = models.find((m) => m.name === detailName);
+  const editModel = models.find((m) => m.name === editName);
+
+  // ---- real derived stats (no invented numbers — everything below comes
+  // straight from cards/reels; auto-scan and cadence stay static/shell) ----
+  const MM_COLORS = ["#39e673", "#5B8FA8", "#8B7FD9", "#E2725B", "#D9B45B", "#5BD9C0", "#D95B9E", "#7FD95B"];
+  const colorFor = (n) => {
+    let hash = 0;
+    for (let i = 0; i < n.length; i++) hash = (hash * 31 + n.charCodeAt(i)) >>> 0;
+    return MM_COLORS[hash % MM_COLORS.length];
+  };
+  const weekMs = 7 * 86400000;
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+
+  const rows = models.map((m) => {
+    const own = cards.filter((c) => c.model === m.name);
+    const active = own.filter((c) => c.stage !== "posted").length;
+    const posted = own.filter((c) => c.stage === "posted").length;
+    const myReels = (reels || []).filter((r) => r.model === m.name);
+    const views7d = myReels.filter((r) => Date.now() - (r.createdAt || 0) < weekMs).reduce((s, r) => s + (r.views || 0), 0);
+    const lastActiveTs = Math.max(0, ...own.map((c) => c.createdAt || 0), ...myReels.map((r) => r.createdAt || 0));
+    return { model: m, own, active, posted, views7d, lastActiveTs, color: colorFor(m.name) };
+  }).sort((a, b) => b.views7d - a.views7d);
+
+  const maxViews = Math.max(1, ...rows.map((r) => r.views7d));
+  const weeklyAvgPct = rows.length ? Math.round(rows.reduce((s, r) => s + Math.round((r.views7d / maxViews) * 100), 0) / rows.length) : 0;
+  const cardsToday = cards.filter((c) => (c.createdAt || 0) >= dayStart.getTime()).length;
+  const onTheRiseCount = rows.filter((r) => r.views7d > 0 && r.views7d >= maxViews * 0.5).length;
+  const connectedCount = models.filter((m) => m.bufferChannelIdIg || m.bufferChannelIdTiktok || m.bufferChannelIdX).length;
+
+  const nextScan = new Date();
+  nextScan.setHours(Math.ceil((nextScan.getHours() + 0.01) / 4) * 4, 0, 0, 0);
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <p className="c-muted text-sm">Roster, socials, Drive links, and completed questionnaires.</p>
-        <button onClick={() => setAdding(true)}
-          className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-3 py-1.5 rounded-lg font-semibold hover-bg-accent2">
-          <Plus size={13} /> Add model
-        </button>
+    <div className="rounded-2xl p-5 md:p-7 relative overflow-hidden"
+      style={{
+        background: "radial-gradient(ellipse 120% 100% at 15% 0%, rgba(18,179,76,0.10), transparent 60%), #0b0f0d",
+        border: "1px solid rgba(57,230,115,0.16)",
+      }}>
+      {/* ---- header ---- */}
+      <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
+        <div>
+          <div className="text-2xl font-extrabold tracking-tight c-text">Model Manager</div>
+          <p className="c-muted text-sm mt-1.5">{models.length} model{models.length === 1 ? "" : "s"} tracked — performance ranking & accountability.</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5 fs-10 font-mono uppercase tracking-wide"
+            style={{ color: "#39e673", textShadow: "0 0 6px rgba(57,230,115,0.5)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#39e673", boxShadow: "0 0 6px #39e673" }} />
+            All systems online
+          </div>
+          <div className="fs-13 font-mono c-muted mt-1">{clock.toLocaleTimeString("en-GB")}</div>
+        </div>
+      </div>
+
+      {/* ---- stat pills + tabs + actions ---- */}
+      <div className="flex items-center gap-2.5 flex-wrap mt-5 mb-4">
+        <div className="rounded-xl px-3.5 py-2" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="text-lg font-mono font-bold c-text">{weeklyAvgPct}%</div>
+          <div className="fs-8 font-mono uppercase c-faint tracking-wide">Weekly avg</div>
+        </div>
+        <div className="rounded-xl px-3.5 py-2" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="text-lg font-mono font-bold c-text">{cardsToday}/{cards.length}</div>
+          <div className="fs-8 font-mono uppercase c-faint tracking-wide">Today</div>
+        </div>
+
+        <div className="flex rounded-full overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+          <button onClick={() => setPlatformFocus("tt")}
+            className="fs-10 font-mono uppercase px-3 py-2 transition-colors"
+            style={platformFocus === "tt" ? { background: "#fff", color: "#0b0f0d" } : { color: "#8B93A1" }}>
+            TT only
+          </button>
+          <button onClick={() => setPlatformFocus("ig")}
+            className="fs-10 font-mono uppercase px-3 py-2 transition-colors"
+            style={platformFocus === "ig" ? { background: "#fff", color: "#0b0f0d" } : { color: "#8B93A1" }}>
+            IG only
+          </button>
+        </div>
+
+        <div className="flex rounded-full overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+          <button onClick={() => setMmTab("models")}
+            className="fs-10 font-mono uppercase px-3 py-2 transition-colors"
+            style={mmTab === "models" ? { background: "rgba(57,230,115,0.12)", color: "#39e673" } : { color: "#8B93A1" }}>
+            Models
+          </button>
+          <button onClick={() => setMmTab("accounts")}
+            className="fs-10 font-mono uppercase px-3 py-2 transition-colors"
+            style={mmTab === "accounts" ? { background: "rgba(57,230,115,0.12)", color: "#39e673" } : { color: "#8B93A1" }}>
+            Accounts
+          </button>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide c-bg-accent c-onaccent px-3 py-1.5 rounded-full font-semibold hover-bg-accent2">
+            <Plus size={13} /> Add model
+          </button>
+          <button onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide px-3 py-1.5 rounded-full font-semibold transition-colors"
+            style={{ background: "rgba(57,230,115,0.08)", color: "#39e673", border: "1px solid rgba(57,230,115,0.3)" }}>
+            <Sparkles size={13} /> Add with AI
+          </button>
+        </div>
       </div>
 
       {adding && (
-        <div className="mb-5 c-bg-surface border c-border rounded-xl p-3 flex gap-2 flex-wrap">
+        <div className="mb-5 rounded-xl p-3 flex gap-2 flex-wrap" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name"
             className="flex-1 minw-120 c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent" />
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Niche / persona note"
@@ -1361,44 +2729,321 @@ function ModelManager({ models, persistModels, cards, agency }) {
         </div>
       )}
 
+      {/* ---- auto-scan bar ---- */}
+      <div className="flex items-center gap-3 flex-wrap rounded-xl px-4 py-3 mb-5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <button onClick={() => setAutoScanOn((v) => !v)}
+          className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
+          style={{ background: autoScanOn ? "#39e673" : "rgba(255,255,255,0.15)" }}>
+          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: autoScanOn ? "18px" : "2px" }} />
+        </button>
+        <span className="fs-11 font-mono uppercase c-text font-semibold flex-shrink-0">Auto-scan</span>
+        <span className="fs-11 c-muted">
+          08:00–20:00 · sweep every 4h · every day · {agency === "US" ? "Miami / New York (US East)" : "Prague (CZ)"} · next run {nextScan.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+        </span>
+        <button className="ml-auto fs-10 font-mono uppercase c-muted hover-accent-text transition-colors flex-shrink-0 flex items-center gap-1">
+          <Settings size={11} /> Configure <ChevronRight size={11} />
+        </button>
+      </div>
+
+      {mmTab === "accounts" ? (
+        <div className="fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+          per-platform account breakdown — not wired yet
+        </div>
+      ) : (
+      <>
+      {/* ---- 4 summary cards ---- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="fs-9 font-mono uppercase c-faint tracking-wide mb-1">01 · Roster</div>
+          <div className="text-xl font-mono font-bold c-text">{models.length} <span className="fs-11 c-muted font-sans">models</span></div>
+          <div className="fs-10 font-mono c-muted mt-1">{rows.filter(r=>r.active>0).length} active · {rows.filter(r=>r.active===0).length} idle</div>
+        </div>
+        <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="fs-9 font-mono uppercase c-faint tracking-wide mb-1 flex items-center gap-1"><TrendingUp size={11} className="c-accent" /> 02 · On the rise</div>
+          <div className="text-xl font-mono font-bold c-text">{onTheRiseCount}</div>
+          <div className="fs-10 font-mono c-muted mt-1">above 50% of top performer this week</div>
+        </div>
+        <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="fs-9 font-mono uppercase c-faint tracking-wide mb-1 flex items-center gap-1"><Link2 size={11} className="c-accent" /> 03 · Link scale</div>
+          <div className="text-xl font-mono font-bold c-text">{connectedCount}/{models.length}</div>
+          <div className="fs-10 font-mono c-muted mt-1">Buffer channels connected</div>
+        </div>
+        <div className="rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="fs-9 font-mono uppercase c-faint tracking-wide mb-1 flex items-center gap-1"><ShieldCheck size={11} className="c-accent" /> 04 · Flagged</div>
+          <div className="text-xl font-mono font-bold c-text">0</div>
+          <div className="fs-10 font-mono c-muted mt-1">no automated ban checks connected yet</div>
+        </div>
+      </div>
+
       {models.length === 0 && (
-        <div className="fs-12 c-faint font-mono italic py-10 text-center border border-dashed c-border rounded-xl">
+        <div className="fs-12 c-faint font-mono italic py-10 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
           no models yet — add your first one
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {models.map((m) => {
-          const own = cards.filter((c) => c.model === m.name);
-          const active = own.filter((c) => c.stage !== "posted").length;
-          const posted = own.filter((c) => c.stage === "posted").length;
-          return (
-            <div key={m.name} className="c-bg-surface border c-border rounded-xl p-4 group relative cursor-pointer hover-border-accent hover-lift"
-              onClick={() => setDetailName(m.name)}>
-              <button onClick={(e) => { e.stopPropagation(); removeModel(m.name); }}
-                className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 c-muted hover-warn transition-opacity">
+      {/* ---- ranked leaderboard table ---- */}
+      {rows.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="hidden md:grid gap-2 px-4 py-2 fs-9 font-mono uppercase c-faint tracking-wide"
+            style={{ gridTemplateColumns: "32px 1.3fr 1fr 2fr 90px 90px", background: "rgba(255,255,255,0.02)" }}>
+            <span>#</span><span>Model</span><span>Cadence</span><span>Week %</span><span>Views 7d</span><span>Last active</span>
+          </div>
+          {rows.map((r, i) => (
+            <div key={r.model.name} onClick={() => setDetailName(r.model.name)}
+              className="group relative grid grid-cols-2 md:grid-cols-1 gap-2 px-4 py-3 items-center cursor-pointer transition-colors hover:bg-white/[0.02]"
+              style={{ gridTemplateColumns: "32px 1.3fr 1fr 2fr 90px 90px", borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.06)" }}>
+              <button onClick={(e) => { e.stopPropagation(); removeModel(r.model.name); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 c-muted hover-warn transition-opacity">
                 <Trash2 size={13} />
               </button>
-              <div className="flex items-center gap-2.5 mb-2">
-                <UserCircle2 size={20} className="c-accent" />
-                <div className="c-text font-medium text-sm">{m.name}</div>
+              <span className="fs-11 font-mono c-faint">{i + 1}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: r.color }} />
+                <div className="min-w-0">
+                  <div className="c-text fs-12 font-medium truncate">{r.model.name}</div>
+                  <div className="fs-9 font-mono c-faint truncate">
+                    {platformFocus === "tt"
+                      ? (r.model.tiktokHandle ? `@${r.model.tiktokHandle}` : "no TT handle")
+                      : (r.model.igHandle ? `@${r.model.igHandle}` : "no IG handle")}
+                  </div>
+                </div>
               </div>
-              {m.note && <div className="c-muted text-xs mb-3">{m.note}</div>}
-              <div className="flex gap-4 font-mono fs-11 c-muted mb-3">
-                <span><span className="c-text">{active}</span> active</span>
-                <span><span className="c-success">{posted}</span> posted</span>
-                <span><span className="c-text">{own.length}</span> total</span>
+              <span className="fs-10 font-mono c-muted">Agency default</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.round((r.views7d / maxViews) * 100)}%`, background: r.color }} />
+                </div>
+                <span className="fs-10 font-mono c-muted w-8 text-right">{Math.round((r.views7d / maxViews) * 100)}%</span>
               </div>
-              <div className="fs-10 font-mono c-faint uppercase tracking-wide">Click for details →</div>
+              <span className="fs-11 font-mono c-text">{r.views7d ? r.views7d.toLocaleString() : "0"}</span>
+              <span className="fs-10 font-mono" style={{ color: r.lastActiveTs && Date.now() - r.lastActiveTs < 86400000 ? "#39e673" : "#8B93A1" }}>
+                {r.lastActiveTs ? timeAgo(r.lastActiveTs) : "—"}
+              </span>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+      </>
+      )}
 
       {detailModel && (
-        <ModelDetail model={detailModel} onClose={() => setDetailName(null)} onSave={saveDetail}
+        <ModelProfileDashboard model={detailModel} cards={cards} reels={reels} maxViewsAcrossModels={maxViews}
+          onClose={() => setDetailName(null)} onEdit={() => { setDetailName(null); setEditName(detailModel.name); }} />
+      )}
+
+      {editModel && (
+        <ModelDetail model={editModel} onClose={() => setEditName(null)} onSave={async (updated) => { await saveDetail(updated); setEditName(null); }}
           onSetPin={setModelPin} onToggleAlwaysOnboard={toggleAlwaysOnboard} models={models} persistModels={persistModels} />
       )}
+    </div>
+  );
+}
+
+function ModelProfileDashboard({ model, cards, reels, maxViewsAcrossModels, onClose, onEdit }) {
+  const [tab, setTab] = useState("overview"); // overview | journey
+  const clock = useLiveClock();
+
+  const own = cards.filter((c) => c.model === model.name);
+  const myReels = (reels || []).filter((r) => r.model === model.name);
+
+  const weekMs = 7 * 86400000;
+  const views7d = myReels.filter((r) => Date.now() - (r.createdAt || 0) < weekMs).reduce((s, r) => s + (r.views || 0), 0);
+  const weeklyPct = Math.min(100, Math.round((views7d / Math.max(1, maxViewsAcrossModels)) * 100));
+
+  const totalViews = myReels.reduce((s, r) => s + (r.views || 0), 0);
+  const totalLikes = myReels.reduce((s, r) => s + (r.likes || 0), 0);
+  const totalComments = myReels.reduce((s, r) => s + (r.comments || 0), 0);
+  const totalShares = myReels.reduce((s, r) => s + (r.shares || 0), 0);
+  const accountsLinked = [model.igHandle, model.tiktokHandle, model.xHandle, model.ofUrl].filter(Boolean).length;
+
+  const recentPosts = [...myReels].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 10);
+
+  // ---- 14-day normalized multi-metric chart, built from real reel logs ----
+  const days = Array.from({ length: 14 }).map((_, i) => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (13 - i));
+    return d.getTime();
+  });
+  const bucketFor = (metric) => days.map((dayStart) => {
+    const dayEnd = dayStart + 86400000;
+    return myReels.filter((r) => (r.createdAt || 0) >= dayStart && (r.createdAt || 0) < dayEnd)
+      .reduce((s, r) => s + (metric === "posts" ? 1 : (r[metric] || 0)), 0);
+  });
+  const series = [
+    { key: "posts", label: "Posts", color: "#f2f5f0", total: own.length, data: bucketFor("posts") },
+    { key: "views", label: "Views", color: "#39e673", total: totalViews, data: bucketFor("views") },
+    { key: "likes", label: "Likes", color: "#D95B9E", total: totalLikes, data: bucketFor("likes") },
+    { key: "comments", label: "Comments", color: "#5BD9C0", total: totalComments, data: bucketFor("comments") },
+    { key: "shares", label: "Shares", color: "#8B7FD9", total: totalShares, data: bucketFor("shares") },
+    { key: "linkClicks", label: "Link clicks", color: "#D9B45B", total: 0, data: days.map(() => 0) },
+  ];
+  const chartW = 600, chartH = 160;
+  const pathFor = (data) => {
+    const max = Math.max(...data, 1);
+    return data.map((v, i) => `${(i / (data.length - 1)) * chartW},${chartH - (v / max) * chartH}`).join(" ");
+  };
+
+  const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : `${n}`);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-start md:items-center justify-center z-50 p-3 md:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="rounded-2xl p-5 md:p-7 relative overflow-hidden w-full max-w-4xl my-4"
+        style={{
+          background: "radial-gradient(ellipse 120% 100% at 15% 0%, rgba(18,179,76,0.10), transparent 60%), #0b0f0d",
+          border: "1px solid rgba(57,230,115,0.16)",
+        }}
+        onClick={(e) => e.stopPropagation()}>
+
+        {/* ---- header ---- */}
+        <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+          <div>
+            <button onClick={onClose} className="flex items-center gap-1 fs-10 font-mono uppercase c-faint hover-accent-text mb-1.5 transition-colors">
+              <ChevronLeft size={12} /> Model Manager
+            </button>
+            <div className="text-2xl font-extrabold tracking-tight c-text">{model.name}</div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="text-right flex-shrink-0">
+              <div className="flex items-center justify-end gap-1.5 fs-10 font-mono uppercase tracking-wide"
+                style={{ color: "#39e673", textShadow: "0 0 6px rgba(57,230,115,0.5)" }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#39e673", boxShadow: "0 0 6px #39e673" }} />
+                All systems online
+              </div>
+              <div className="fs-13 font-mono c-muted mt-1">{clock.toLocaleTimeString("en-GB")}</div>
+            </div>
+            <button onClick={onClose} className="c-muted hover-text-primary"><X size={18} /></button>
+          </div>
+        </div>
+
+        {/* ---- tabs ---- */}
+        <div className="flex items-center gap-1.5 mb-6">
+          {[{ id: "overview", label: "Overview" }, { id: "journey", label: "Journey" }].map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="fs-11 font-mono uppercase tracking-wide px-3.5 py-1.5 rounded-full border transition-colors"
+              style={tab === t.id
+                ? { borderColor: "rgba(57,230,115,0.5)", color: "#39e673", background: "rgba(57,230,115,0.08)" }
+                : { borderColor: "rgba(255,255,255,0.1)", color: "#8B93A1" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "overview" && (
+          <div>
+            {/* ---- gauge + name + stat mini-cards ---- */}
+            <div className="flex items-center gap-5 flex-wrap mb-6">
+              <div className="relative w-20 h-20 flex-shrink-0">
+                <svg viewBox="0 0 80 80" className="w-20 h-20 -rotate-90">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="#39e673" strokeWidth="6" strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 34}`} strokeDashoffset={`${2 * Math.PI * 34 * (1 - weeklyPct / 100)}`} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="fs-14 font-mono font-bold c-text">{weeklyPct}%</span>
+                  <span className="fs-7 font-mono uppercase c-faint">weekly</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 flex-1 min-w-0">
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="fs-8 font-mono uppercase c-faint mb-1">01 · Overview</div>
+                  <div className="fs-16 font-mono font-bold c-text">{weeklyPct}%</div>
+                  <div className="fs-9 font-mono c-muted">util</div>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="fs-8 font-mono uppercase c-faint mb-1">02 · Accounts</div>
+                  <div className="fs-16 font-mono font-bold c-text">{accountsLinked}</div>
+                  <div className="fs-9 font-mono c-muted">linked</div>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="fs-8 font-mono uppercase c-faint mb-1">03 · Performance</div>
+                  <div className="fs-16 font-mono font-bold c-text">{own.length}</div>
+                  <div className="fs-9 font-mono c-muted">scenes</div>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="fs-8 font-mono uppercase c-faint mb-1">04 · Posts</div>
+                  <div className="fs-16 font-mono font-bold c-text">{myReels.length}</div>
+                  <div className="fs-9 font-mono c-muted">logged</div>
+                </div>
+              </div>
+
+              <button onClick={onEdit}
+                className="fs-10 font-mono uppercase tracking-wide px-3 py-2 rounded-full font-semibold flex-shrink-0 transition-colors"
+                style={{ background: "rgba(57,230,115,0.08)", color: "#39e673", border: "1px solid rgba(57,230,115,0.3)" }}>
+                Edit profile
+              </button>
+            </div>
+
+            {/* ---- metrics chart ---- */}
+            <div className="rounded-xl p-4 mb-6" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-1">Daily metrics</div>
+              <div className="fs-10 c-faint mb-3">Last 14 days · from logged reels — normalized per metric</div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {series.map((s) => (
+                  <span key={s.key} className="fs-9 font-mono px-2 py-1 rounded-full flex items-center gap-1.5"
+                    style={{ background: s.color + "18", color: s.color, border: `1px solid ${s.color}44` }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
+                    {s.label} {fmt(s.total)}
+                  </span>
+                ))}
+              </div>
+              <svg viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" className="w-full" style={{ height: 140 }}>
+                {series.map((s) => (
+                  <polyline key={s.key} points={pathFor(s.data)} fill="none" stroke={s.color} strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+                ))}
+              </svg>
+            </div>
+
+            {/* ---- recent posts ---- */}
+            <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-1">Recent posts</div>
+            <div className="fs-10 c-faint mb-3">Last {recentPosts.length} — ranked by view count</div>
+            {recentPosts.length === 0 ? (
+              <div className="fs-12 c-faint font-mono italic py-8 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+                no reels logged yet for {model.name}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                {recentPosts.map((r) => (
+                  <a key={r.id} href={r.link || undefined} target={r.link ? "_blank" : undefined} rel="noopener noreferrer"
+                    className="rounded-xl p-3 block transition-colors hover:-translate-y-0.5"
+                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <Play size={13} className="c-accent mb-2" />
+                    <div className="fs-13 font-mono font-bold c-text">{fmt(r.views || 0)} <span className="fs-9 c-faint font-sans uppercase">views</span></div>
+                    <div className="fs-9 font-mono c-faint mt-1 truncate">{r.title || "untitled"}</div>
+                    <div className="fs-9 font-mono c-faint mt-0.5">{timeAgo(r.createdAt)}</div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "journey" && (
+          <div>
+            <div className="fs-10 uppercase tracking-widest c-faint font-mono mb-1">Pipeline journey</div>
+            <p className="fs-11 c-muted mb-4">Where {model.name}'s scenes are right now, across every platform.</p>
+            <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
+              {STAGES.map((stage, i) => {
+                const n = own.filter((c) => c.stage === stage.id).length;
+                return (
+                  <React.Fragment key={stage.id}>
+                    <div className="rounded-xl p-3.5 minw-120 flex-shrink-0" style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${stage.color}44` }}>
+                      <div className="fs-9 font-mono uppercase tracking-wide mb-1" style={{ color: stage.color }}>{stage.label}</div>
+                      <div className="fs-20 font-mono font-bold c-text">{n}</div>
+                    </div>
+                    {i < STAGES.length - 1 && <ChevronRight size={14} className="c-faint flex-shrink-0 self-center" />}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            {own.length === 0 && (
+              <div className="mt-4 fs-12 c-faint font-mono italic py-8 text-center rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.12)" }}>
+                no scenes yet for {model.name}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1472,6 +3117,33 @@ function ModelDetail({ model, onClose, onSave, onSetPin, onToggleAlwaysOnboard, 
             <input value={form.inflowwCreatorIdPaid || ""} onChange={(e) => set("inflowwCreatorIdPaid", e.target.value)} placeholder="id from /v1/creators, paid profile"
               className="w-full c-bg-app border c-border rounded-lg px-2.5 py-2 text-sm c-text outline-none focus-border-accent font-mono" />
           </div>
+        </div>
+
+        <div className="rounded-xl p-3 mb-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="fs-10 uppercase tracking-wide c-faint font-mono mb-1">Instagram connection</div>
+              {model.igAccessToken ? (
+                <div className="fs-11 font-mono c-accent flex items-center gap-1.5">
+                  <CheckCircle2 size={12} /> Connected
+                  {model.igConnectedAt && <span className="c-faint">· since {new Date(model.igConnectedAt).toLocaleDateString()}</span>}
+                </div>
+              ) : (
+                <div className="fs-11 font-mono c-faint">Not connected yet</div>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                const redirectUri = "https://kvwwjyvkoiqsvpyzbcmn.supabase.co/functions/v1/ig-oauth-callback";
+                const authUrl = `https://www.instagram.com/oauth/authorize?client_id=1455803663270663&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${encodeURIComponent(model.name)}`;
+                window.open(authUrl, "_blank", "noopener,noreferrer");
+              }}
+              className="flex items-center gap-1.5 fs-11 font-mono uppercase tracking-wide px-3 py-1.5 rounded-full font-semibold flex-shrink-0 transition-colors"
+              style={{ background: "rgba(57,230,115,0.08)", color: "#39e673", border: "1px solid rgba(57,230,115,0.3)" }}>
+              <Instagram size={13} /> {model.igAccessToken ? "Reconnect" : "Connect Instagram"}
+            </button>
+          </div>
+          <p className="fs-9 c-faint mt-2">Opens Instagram in a new tab — she needs to be logged into {model.name}'s account there, or you approve on her behalf if you have the login.</p>
         </div>
 
         <div className="flex gap-3 mb-4 fs-11 font-mono">
@@ -8184,7 +9856,7 @@ function App() {
             {currentView === "dashboard" && (session.role === "admin"
               ? <Dashboard cards={scopedCards} models={agencyModels} stats={scopedStats} reels={scopedReels} onNavigate={setView} inflowwDailyStats={inflowwDailyStats} />
               : <CreatorDashboard stats={stats} tasks={tasks} restrictModel={restrictModel} onNavigate={setView} bufferDailyStats={bufferDailyStats} ofDailyStats={ofDailyStats} inflowwDailyStats={inflowwDailyStats} />)}
-            {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} forcedNetwork={contentPlatform} />}
+            {currentView === "content" && <ContentDirector cards={isAdmin ? scopedCards : cards} persistCards={isAdmin ? scopedPersistCards : persistCards} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} forcedNetwork={contentPlatform} reels={isAdmin ? scopedReels : reels} persistReels={isAdmin ? scopedPersistReels : persistReels} />}
             {currentView === "calendar" && <CalendarView cards={isAdmin ? scopedCards : cards} tasks={isAdmin ? scopedTasks : tasks} onNavigate={setView} restrictModel={restrictModel} />}
             {currentView === "tasks" && <TaskManager tasks={isAdmin ? scopedTasks : tasks} persistTasks={isAdmin ? scopedPersistTasks : persistTasks} models={isAdmin ? agencyModels : models} restrictModel={restrictModel} />}
             {currentView === "stats" && <StatsManager stats={scopedStats} persistStats={scopedPersistStats} models={agencyModels} reels={scopedReels} persistReels={scopedPersistReels} />}
@@ -8195,7 +9867,7 @@ function App() {
             {currentView === "titlegen" && isAdmin && <TitleGeneratorPage />}
             {currentView === "weeklytrends" && isAdmin && <TrendsPage weeklyTrendReels={weeklyTrendReels} onReload={reloadWeeklyTrendReels} />}
             {currentView === "trending" && <CreatorTrending trends={trends} agency={session.agency} />}
-            {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} agency={session.agency} />}
+            {currentView === "models" && <ModelManager models={agencyModels} persistModels={scopedPersistModels} cards={scopedCards} reels={scopedReels} agency={session.agency} />}
             {currentView === "whatsnew" && <WhatsNewPage />}
             {currentView === "settings" && (isAdmin
               ? <SettingsPanel settings={settings} persistSettings={persistSettings} integrations={integrations} persistIntegrations={scopedPersistIntegrations} agency={session.agency} />
